@@ -70,6 +70,9 @@ import { IMAGE_UPLOAD_GUIDANCE, uploadLimitError } from './uploadPolicy'
 import { parseReviewUrlState, reviewUrlSearch } from './pages/review/reviewUrlState'
 import { reviewStatusLabel } from './pages/review/reviewStatusPresentation'
 import { createRequestId } from './requestId'
+import { MobileBottomNavigation } from './components/mobile/MobileBottomNavigation'
+import { MobileRecordCard } from './components/mobile/MobileRecordCard'
+import { useMobileViewport } from './responsive/useMobileViewport'
 import {
   api,
   type DashboardSummary,
@@ -107,6 +110,7 @@ type NavigationGuardRegistration = {
 }
 
 function App() {
+  const isMobile = useMobileViewport()
   const [view, setView] = useState<ViewKey>(() => viewFromPath(window.location.pathname))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -342,6 +346,7 @@ function App() {
           )}
         </Content>
       </Layout>
+      {isMobile && <MobileBottomNavigation activeView={view} onNavigate={navigate} />}
     </Layout>
   )
 }
@@ -1645,6 +1650,27 @@ function DatasetWorkspace({ data, tasks, refreshDashboard }: { data: DatasetRele
 }
 
 function ReleasesTable({ data, compact = false, refreshDashboard, onBrowse }: { data: DatasetReleaseSummary[]; compact?: boolean; refreshDashboard?: () => void; onBrowse?: (release: DatasetReleaseSummary) => void }) {
+  const isMobile = useMobileViewport()
+  const deleteRelease = (record: DatasetReleaseSummary, mode: 'record' | 'artifacts' | 'cascade') => {
+    const cascade = mode === 'cascade'
+    const deleteArtifacts = mode !== 'record'
+    Modal.confirm({
+      title: cascade ? '级联删除整个数据链路？' : deleteArtifacts ? '永久删除数据集版本？' : '删除数据集版本？',
+      content: cascade ? '将永久删除该数据集及其训练、模型、推理历史和全部产物。此操作不可恢复。' : deleteArtifacts ? '数据集发布目录会被永久清理；存在下游引用时操作会被阻止。' : '被训练或模型引用时会拒绝删除。',
+      okText: cascade ? '确认级联删除' : '确认删除',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await api.deleteDatasetRelease(record.id, deleteArtifacts, cascade)
+          refreshDashboard?.()
+          message.success(cascade ? '数据集及全部下游已删除' : deleteArtifacts ? '数据集版本和文件已删除' : '数据集版本已删除')
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : '删除版本失败')
+          throw error
+        }
+      },
+    })
+  }
   const columns: ColumnsType<DatasetReleaseSummary> = [
     { title: '数据集名称', dataIndex: 'display_name', render: (value, record) => <strong>{value || record.task_id}</strong> },
     { title: '版本', dataIndex: 'version', render: (value) => <strong>v{value}</strong> },
@@ -1655,7 +1681,16 @@ function ReleasesTable({ data, compact = false, refreshDashboard, onBrowse }: { 
     { title: '发布时间', dataIndex: 'created_at', render: (value) => dayjs(value).format('YYYY-MM-DD') },
     ...((!compact || onBrowse) ? [{ title: '操作', key: 'actions', render: (_: unknown, record: DatasetReleaseSummary) => <Space>{onBrowse && <Button size="small" icon={<Eye size={13} />} onClick={() => onBrowse(record)}>查看图片</Button>}<Tooltip title="删除版本记录，保留数据文件"><Button danger size="small" icon={<Trash2 size={13} />} onClick={() => Modal.confirm({ title:'删除数据集版本？', content:'被训练或模型引用时会拒绝删除。', okButtonProps:{danger:true}, onOk:async()=>{try{await api.deleteDatasetRelease(record.id,false);refreshDashboard?.();message.success('数据集版本已删除')}catch(error){message.error(error instanceof Error?error.message:'删除版本失败');throw error}} })} /></Tooltip><Tooltip title="删除版本并清理发布目录"><Button danger size="small" icon={<Trash2 size={13} />} onClick={() => Modal.confirm({ title:'永久删除数据集版本？', content:'数据集发布目录会被永久清理；存在下游引用时操作会被阻止。', okButtonProps:{danger:true}, onOk:async()=>{try{await api.deleteDatasetRelease(record.id,true);refreshDashboard?.();message.success('数据集版本和文件已删除')}catch(error){message.error(error instanceof Error?error.message:'删除版本失败');throw error}} })} /></Tooltip><Tooltip title="删除数据集、训练、模型、推理历史和全部产物"><Button danger size="small" type="primary" icon={<Trash2 size={13} />} onClick={() => Modal.confirm({ title:'级联删除整个数据链路？', content:'将永久删除该数据集及其训练、模型、推理历史和全部产物。此操作不可恢复。', okText:'确认级联删除', okButtonProps:{danger:true}, onOk:async()=>{try{await api.deleteDatasetRelease(record.id,true,true);refreshDashboard?.();message.success('数据集及全部下游已删除')}catch(error){message.error(error instanceof Error?error.message:'级联删除失败');throw error}} })} /></Tooltip></Space> }] : []),
   ]
-  const table = <Table rowKey="id" size={compact ? 'small' : 'middle'} columns={columns} dataSource={data} pagination={false} />
+  const table = isMobile ? <div className="mobile-release-list mobile-record-list">{data.map((release) => <MobileRecordCard
+    key={release.id}
+    title={release.display_name || release.task_id}
+    subtitle={`v${release.version} · ${release.task_id}`}
+    status={<Tag color={release.status === 'published' ? 'green' : 'orange'}>{release.status}</Tag>}
+    metadata={[["数据划分", formatReleaseSplit(release)], ["发布时间", dayjs(release.created_at).format('YYYY-MM-DD')]]}
+    metric={release.release_path}
+    onClick={() => onBrowse?.(release)}
+    actions={<><Button size="small" icon={<Eye size={13} />} disabled={!onBrowse} onClick={() => onBrowse?.(release)}>查看图片</Button><Dropdown trigger={['click']} menu={{ items: [{ key: 'record', label: '删除版本记录', danger: true }, { key: 'artifacts', label: '删除版本和目录', danger: true }, { key: 'cascade', label: '级联删除全部下游', danger: true }], onClick: ({ key }) => deleteRelease(release, key as 'record' | 'artifacts' | 'cascade') }}><Button size="small" danger icon={<MoreHorizontal size={13} />}>删除与清理</Button></Dropdown></>}
+  />)}</div> : <Table rowKey="id" size={compact ? 'small' : 'middle'} columns={columns} dataSource={data} pagination={false} />
   return compact ? table : <DataPanel title="数据集版本" subtitle="校验、校验和与 DVC 状态">{table}</DataPanel>
 }
 

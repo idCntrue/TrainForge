@@ -342,7 +342,7 @@ export default function AnnotationPage({ tasks, onNavigate, refreshDashboard }: 
         <Button icon={<RotateCcw size={15} />} onClick={() => void sync()} loading={busy}>同步选中帧</Button>
         <Button icon={<Upload size={15} />} disabled={!resolveAnnotationTaskId(taskId, current?.task_id)} onClick={() => void openExport()}>导出已审核</Button>
       </Space>
-      <Space>
+      <Space className="annotation-tool-strip">
         <Tooltip title="选择对象"><Button disabled={!current || busy} type={interaction.tool === 'select' ? 'primary' : 'default'} icon={<MousePointer2 size={16} />} onClick={() => changeTool('select')} /></Tooltip>
         <Tooltip title="新建矩形"><Button disabled={!current || busy || current.status === 'reviewed' || current.task_type === 'segment'} type={interaction.tool === 'box' ? 'primary' : 'default'} icon={<Box size={16} />} onClick={() => changeTool('box')} /></Tooltip>
         <Tooltip title="新建多边形"><Button disabled={!current || busy || current.status === 'reviewed' || current.task_type === 'detect'} type={interaction.tool === 'polygon' ? 'primary' : 'default'} icon={<Pentagon size={16} />} onClick={() => changeTool('polygon')} /></Tooltip>

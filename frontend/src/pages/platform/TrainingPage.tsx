@@ -19,6 +19,8 @@ import { TrainingArtifactsTab } from './training/TrainingArtifactsTab'
 import { trainingFormInitialValues } from './training/trainingFormDefaults'
 import { cpuTrainingPolicy, normalizeCpuTrainingValues } from './training/trainingResourcePolicy'
 import { createRequestId } from '../../requestId'
+import { MobileRecordCard } from '../../components/mobile/MobileRecordCard'
+import { useMobileViewport } from '../../responsive/useMobileViewport'
 
 const taskOptions = ['detect', 'segment'].map((value) => ({ value, label: value.toUpperCase() }))
 const statusOptions = ['queued', 'running', 'evaluating', 'exporting', 'verifying', 'completed', 'failed', 'cancelled', 'interrupted'].map((value) => ({ value, label: statusLabel(value) }))
@@ -33,6 +35,7 @@ function isTrainingStorageError(detail: unknown): detail is TrainingStorageError
 }
 
 export default function TrainingPage() {
+  const isMobile = useMobileViewport()
   const [runs, setRuns] = useState<TrainingRun[]>([])
   const [loading, setLoading] = useState(true)
   const [task, setTask] = useState<TaskType>()
@@ -212,13 +215,25 @@ export default function TrainingPage() {
   return <div className="platform-stack">
     <PageHeader title="训练运行" description="创建、观察和停止本地 Ultralytics 训练任务。" actions={<Space><Button icon={<RefreshCw size={16} />} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<Plus size={16} />} onClick={openCreateDrawer}>创建训练</Button></Space>} />
     <div className="platform-filterbar"><Select allowClear placeholder="全部任务" options={taskOptions} value={task} onChange={setTask} /><Select allowClear placeholder="全部状态" options={statusOptions} value={status} onChange={setStatus} /></div>
-    <section className="platform-panel"><Table loading={loading} rowKey="id" dataSource={runs} onRow={(run) => ({ onClick: () => setSelected(run) })} columns={[
+    <section className="platform-panel">{isMobile ? <div className="mobile-record-list">
+      {runs.map((run) => <MobileRecordCard
+        key={run.id}
+        title={run.name}
+        subtitle={resolveDatasetReleaseLabel(run.datasetReleaseId, releases)}
+        status={<StatusTag status={run.status} />}
+        progress={<Progress percent={run.progress} size="small" />}
+        metadata={[[phaseLabel(run.phase), `${run.epoch} / ${run.epochs} Epoch`], ['Task', <TaskTag task={run.task} />]]}
+        metric={`${run.metrics.primaryLabel} ${run.metrics.primary == null ? '--' : run.metrics.primary.toFixed(3)}`}
+        onClick={() => setSelected(run)}
+      />)}
+      {!loading && runs.length === 0 && <div className="mobile-empty-state">暂无训练运行</div>}
+    </div> : <Table loading={loading} rowKey="id" dataSource={runs} onRow={(run) => ({ onClick: () => setSelected(run) })} columns={[
       { title: '运行', dataIndex: 'name', render: (name, run) => <div className="table-primary"><strong>{name}</strong><span>{resolveDatasetReleaseLabel(run.datasetReleaseId, releases)}</span></div> },
       { title: '任务', dataIndex: 'task', render: (value) => <TaskTag task={value} /> }, { title: '状态', dataIndex: 'status', render: (value) => <StatusTag status={value} /> },
       { title: '进度', dataIndex: 'progress', width: 210, render: (value, run) => <div><Progress percent={value} size="small" /><small>{phaseLabel(run.phase)} · 第 {run.epoch}/{run.epochs} 轮</small></div> },
       { title: '核心指标', render: (_, run) => `${run.metrics.primaryLabel} ${run.metrics.primary == null ? '--' : run.metrics.primary.toFixed(3)}` }, { title: '创建时间', dataIndex: 'createdAt' },
-    ]} /></section>
-    <Drawer width={560} title="创建训练运行" open={createOpen} onClose={closeCreateDrawer} extra={<Button type="primary" onClick={() => void createRun()}>加入队列</Button>}>
+    ]} />}</section>
+    <Drawer className="mobile-fullscreen-drawer" width={isMobile ? '100%' : 560} title="创建训练运行" open={createOpen} onClose={closeCreateDrawer} extra={<Button type="primary" onClick={() => void createRun()}>加入队列</Button>}>
       <Form form={form} layout="vertical" initialValues={trainingFormInitialValues}>
         <Form.Item name="name" label="运行名称" rules={[{ required: true }]}><Input placeholder="例如：门板缺陷检测 v4" /></Form.Item>
         <div className="form-grid"><Form.Item name="task" label="任务类型" rules={[{ required: true }]}><Select disabled options={taskOptions} /></Form.Item><Form.Item name="datasetReleaseId" label="数据集版本" rules={[{ required: true }]}><Select popupMatchSelectWidth={520} options={datasetOptions} onChange={selectDataset} /></Form.Item></div>
@@ -268,7 +283,7 @@ export default function TrainingPage() {
         </> }]} />}
       </Form>
     </Drawer>
-    <Drawer width="min(1080px, 94vw)" title={selected?.name} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && <Space>{selected.status === 'completed' && <Button type="primary" icon={<Box size={15} />} onClick={() => { setRegisterRun(selected); modelForm.setFieldsValue({ name: selected.name, version: '1.0.0' }) }}>注册候选模型</Button>}{['queued','running'].includes(selected.status) ? <Button danger icon={<Square size={15} />} onClick={() => void cancelRun(selected)}>停止</Button> : <Dropdown trigger={['click']} menu={{ items:[{key:'record',label:'仅删除训练记录'},{key:'artifacts',label:'删除记录并清理训练产物',danger:true},{key:'cascade',label:'级联删除全部下游数据',danger:true}],onClick:({key})=>deleteRun(selected,key!=='record',key==='cascade') }}><Button icon={<MoreHorizontal size={15}/>}>删除与清理</Button></Dropdown>}</Space>}>
+    <Drawer className="mobile-fullscreen-drawer" width={isMobile ? '100%' : 'min(1080px, 94vw)'} title={selected?.name} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && <Space>{selected.status === 'completed' && <Button type="primary" icon={<Box size={15} />} onClick={() => { setRegisterRun(selected); modelForm.setFieldsValue({ name: selected.name, version: '1.0.0' }) }}>注册候选模型</Button>}{['queued','running'].includes(selected.status) ? <Button danger icon={<Square size={15} />} onClick={() => void cancelRun(selected)}>停止</Button> : <Dropdown trigger={['click']} menu={{ items:[{key:'record',label:'仅删除训练记录'},{key:'artifacts',label:'删除记录并清理训练产物',danger:true},{key:'cascade',label:'级联删除全部下游数据',danger:true}],onClick:({key})=>deleteRun(selected,key!=='record',key==='cascade') }}><Button icon={<MoreHorizontal size={15}/>}>删除与清理</Button></Dropdown>}</Space>}>
       {selected && <div className="training-detail-drawer"><div className="detail-status"><TaskTag task={selected.task} /><StatusTag status={selected.status} /><span>{selected.duration}</span><strong>Epoch {selected.epoch}/{selected.epochs}</strong></div>
         {detailsLoading && !details ? <div className="training-detail-loading"><Spin /></div> : details ? <Tabs defaultActiveKey="overview" items={[
           { key: 'overview', label: '实时概览', children: <TrainingOverviewTab run={selected} details={details} recoveryPending={recoveryPending} onSafeRetry={() => void recoverRun('safe')} onEvaluateBest={() => void recoverRun('evaluation')} /> },

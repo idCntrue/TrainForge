@@ -44,6 +44,18 @@ TrainForge 将数据导入、筛选、标注、数据集发布、训练、评估
 | ![TrainForge 训练与质量分析](docs/assets/screenshots/trainforge-training.png) | ![TrainForge 模型中心](docs/assets/screenshots/trainforge-models.png) |
 | 查看资源策略、Epoch 进度、指标趋势、失败原因和面向普通用户的质量结论。 | 管理 PT/ONNX 制品、运行一致性门禁，并控制候选、发布和归档状态。 |
 
+### 移动端与平板
+
+TrainForge 使用同一套 React 应用提供自适应信息架构。当视口宽度不超过 `900px` 时，桌面侧栏会切换为固定底部导航，列表、抽屉和标注工作台使用更适合触控的布局，业务接口与数据保存逻辑保持一致。
+
+<p align="center">
+  <img src="docs/assets/screenshots/mobile/trainforge-mobile-overview.png" width="280" alt="TrainForge 移动端工作台">
+  &nbsp;&nbsp;
+  <img src="docs/assets/screenshots/mobile/trainforge-mobile-models.png" width="280" alt="TrainForge 移动端模型中心">
+</p>
+
+<p align="center"><sub>固定底部导航、单列卡片和 iPhone 安全区适配</sub></p>
+
 ## 核心能力
 
 ### 数据与标注
@@ -250,6 +262,14 @@ docker compose -f compose.yaml -f compose.gpu.yaml exec -T api \
 - 在外层 Nginx、Ingress 或云负载均衡终止 TLS 并接入认证。
 - `.env`、数据目录、模型目录和数据库必须位于持久化、受控的位置。
 - 部署前备份并验证数据，任何迁移先在副本上演练。
+
+Windows 发布者可使用受测脚本生成不包含数据库、权重、日志和本机配置的更新包：
+
+```powershell
+./scripts/package-deploy.ps1
+```
+
+脚本会输出完整路径、文件大小和 SHA-256，并验证 `registry`、`models`、API、Compose 与更新脚本均已纳入归档。
 
 历史存储根路径迁移默认只生成预览报告；确认 `external_paths` 和 `missing_paths` 后，才可增加 `--apply` 写入数据库：
 

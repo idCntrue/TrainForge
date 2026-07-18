@@ -12,8 +12,11 @@ import { platformRepository } from '../../platform/repository'
 import type { ModelArtifact, ModelStatus, TaskType } from '../../platform/types'
 import { createOperationGate } from './modelOperationGate'
 import { publicationPresentation } from './modelsPresentation'
+import { MobileRecordCard } from '../../components/mobile/MobileRecordCard'
+import { useMobileViewport } from '../../responsive/useMobileViewport'
 
 export default function ModelsPage() {
+  const isMobile = useMobileViewport()
   const [models, setModels] = useState<ModelArtifact[]>([]), [selected, setSelected] = useState<ModelArtifact>(), [busy, setBusy] = useState(false)
   const operationGate = useRef(createOperationGate())
   const [task, setTask] = useState<TaskType>(), [status, setStatus] = useState<ModelStatus>()
@@ -52,12 +55,23 @@ export default function ModelsPage() {
     <PageHeader title="模型中心" description="管理训练产物、独立测试证据、PT/ONNX 一致性门禁和发布状态。" />
     <MetricStrip items={[{ label:'当前模型',value:models.length,icon:Box,tone:'blue' },{ label:'已发布',value:published,icon:ShieldCheck,tone:'green' },{ label:'ONNX 就绪',value:models.filter((model) => model.formats.includes('ONNX')).length,icon:FileCode2,tone:'teal' },{ label:'验证通过',value:models.filter((model) => model.gates.every((gate) => gate.status === 'passed')).length,icon:CheckCircle2,tone:'amber' }]} />
     <div className="platform-filterbar"><Select allowClear placeholder="全部任务" value={task} onChange={setTask} options={['detect','segment'].map((value) => ({ value, label:value.toUpperCase() }))} /><Select allowClear placeholder="全部发布状态" value={status} onChange={setStatus} options={['candidate','published','blocked','archived'].map((value) => ({ value, label:value }))} /></div>
-    <section className="platform-panel"><Table locale={{ emptyText: '暂无真实模型制品' }} rowKey="id" dataSource={models} onRow={(model) => ({ onClick: () => setSelected(model) })} columns={[
+    <section className="platform-panel">{isMobile ? <div className="mobile-record-list">
+      {models.map((model) => <MobileRecordCard
+        key={model.id}
+        title={`${model.name} v${model.version}`}
+        subtitle={model.datasetName}
+        status={<StatusTag status={model.status} />}
+        metadata={[[model.primaryMetricLabel, model.primaryMetric.toFixed(3)], ['格式', model.formats.join(' / ') || '-']]}
+        metric={`${model.sizeMb} MB`}
+        onClick={() => setSelected(model)}
+      />)}
+      {models.length === 0 && <div className="mobile-empty-state">暂无真实模型制品</div>}
+    </div> : <Table locale={{ emptyText: '暂无真实模型制品' }} rowKey="id" dataSource={models} onRow={(model) => ({ onClick: () => setSelected(model) })} columns={[
       { title:'模型',render:(_,model)=><div className="table-primary"><strong>{model.name} <small>v{model.version}</small></strong><span>{model.datasetName}</span></div> },
       { title:'任务',dataIndex:'task',render:(value)=><TaskTag task={value} /> },{ title:'状态',dataIndex:'status',render:(value)=><StatusTag status={value} /> },
       { title:'核心指标',render:(_,model)=>`${model.primaryMetricLabel} ${model.primaryMetric.toFixed(3)}` },{ title:'格式',render:(_,model)=>model.formats.join(' / ') || '-' },{ title:'大小',dataIndex:'sizeMb',render:(value)=>`${value} MB` },
-    ]} /></section>
-    <Drawer width={620} title={selected ? `${selected.name} v${selected.version}` : ''} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && <Space>{['candidate','blocked'].includes(selected.status) && <Button loading={busy} disabled={busy} icon={<Play size={15}/>} onClick={()=>void action('gates')}>运行门禁</Button>}{selected.status === 'candidate' && selected.gates.every((gate)=>gate.status==='passed') && <Button loading={busy} disabled={busy} type="primary" icon={<Send size={15}/>} onClick={()=>void action('publish')}>发布</Button>}{selected.status === 'published' && <Button loading={busy} disabled={busy} icon={<Archive size={15}/>} onClick={()=>void action('archive')}>归档</Button>}<Dropdown trigger={['click']} menu={{ items: [...(selected.status !== 'published' ? [{ key:'record',label:'仅删除模型记录' },{ key:'artifacts',label:'删除记录并清理制品',danger:true }] : []),{ key:'cascade',label:'级联删除模型与推理历史',danger:true }], onClick:({key})=>deleteModel(key!=='record',key==='cascade') }}><Button disabled={busy} icon={<MoreHorizontal size={15}/>}>删除与清理</Button></Dropdown></Space>}>
+    ]} />}</section>
+    <Drawer className="mobile-fullscreen-drawer" width={isMobile ? '100%' : 620} title={selected ? `${selected.name} v${selected.version}` : ''} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && <Space>{['candidate','blocked'].includes(selected.status) && <Button loading={busy} disabled={busy} icon={<Play size={15}/>} onClick={()=>void action('gates')}>运行门禁</Button>}{selected.status === 'candidate' && selected.gates.every((gate)=>gate.status==='passed') && <Button loading={busy} disabled={busy} type="primary" icon={<Send size={15}/>} onClick={()=>void action('publish')}>发布</Button>}{selected.status === 'published' && <Button loading={busy} disabled={busy} icon={<Archive size={15}/>} onClick={()=>void action('archive')}>归档</Button>}<Dropdown trigger={['click']} menu={{ items: [...(selected.status !== 'published' ? [{ key:'record',label:'仅删除模型记录' },{ key:'artifacts',label:'删除记录并清理制品',danger:true }] : []),{ key:'cascade',label:'级联删除模型与推理历史',danger:true }], onClick:({key})=>deleteModel(key!=='record',key==='cascade') }}><Button disabled={busy} icon={<MoreHorizontal size={15}/>}>删除与清理</Button></Dropdown></Space>}>
       {selected && <div className="platform-stack compact"><div className="detail-status"><TaskTag task={selected.task} /><StatusTag status={selected.status} /><strong>{selected.primaryMetricLabel} {selected.primaryMetric.toFixed(3)}</strong></div>
         <Descriptions size="small" column={1} bordered items={[{key:'dataset',label:'数据集版本',children:selected.datasetName},{key:'run',label:'训练运行',children:selected.trainingRunId},{key:'hash',label:'PT SHA-256',children:selected.weightHash},{key:'env',label:'运行环境',children:selected.environment}]} />
         <div className="gate-list">{selected.gates.map((gate)=><div className="gate-row" key={gate.label}><StatusTag status={gate.status} /><div><strong>{gate.label}</strong><span>{gate.detail}</span></div></div>)}</div>

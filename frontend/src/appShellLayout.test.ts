@@ -27,6 +27,19 @@ describe('application shell layout', () => {
     expect(css).toContain('.content { flex: 1; min-height: 0;')
   })
 
+  it('uses a safe-area-aware fixed mobile navigation instead of a narrow desktop sidebar', () => {
+    const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    expect(source).toContain('<MobileBottomNavigation activeView={view} onNavigate={navigate} />')
+    expect(css).toContain('--mobile-navigation-height: 68px;')
+    expect(css).toContain('.mobile-bottom-navigation { position: fixed;')
+    expect(css).toContain('padding-bottom: env(safe-area-inset-bottom);')
+    expect(css).toContain('min-height: 44px;')
+    expect(css).toContain('.sidebar { display: none; }')
+    expect(css).toContain('padding-bottom: calc(var(--mobile-navigation-height) + env(safe-area-inset-bottom) + 18px);')
+  })
+
   it('preserves inference media aspect ratio within minimum and maximum heights', () => {
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
     expect(css).toContain('.inference-result-media { width: 100%; min-height: 240px; max-height: 520px;')
@@ -66,5 +79,26 @@ describe('application shell layout', () => {
     expect(source).toContain('import-batch-actions')
     expect(css).toContain('.import-batch-list')
     expect(css).toContain('.import-batch-card')
+  })
+
+  it('provides mobile-native dataset and annotation presentation contracts', () => {
+    const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
+    const annotation = fs.readFileSync(path.resolve('src/pages/annotation/AnnotationPage.tsx'), 'utf8')
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    expect(source).toContain('mobile-release-list')
+    expect(annotation).toContain('annotation-tool-strip')
+    expect(css).toContain('.annotation-tool-strip { overflow-x: auto;')
+    expect(css).toContain('min-height: calc(100dvh - 250px);')
+    expect(css).toContain('.dataset-image-grid { grid-template-columns: repeat(2, minmax(0, 1fr));')
+  })
+
+  it('makes mobile sheets and controls fit the viewport', () => {
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    expect(css).toContain('.mobile-fullscreen-drawer .ant-drawer-body')
+    expect(css).toContain('.platform-filterbar .ant-select { width: 100%;')
+    expect(css).toContain('.ant-upload-drag { padding-inline: 12px;')
+    expect(css).toContain('.inference-result-media { min-height: 180px;')
   })
 })

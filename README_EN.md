@@ -44,6 +44,18 @@ TrainForge brings data ingestion, curation, annotation, dataset releases, traini
 | ![TrainForge training dashboard](docs/assets/screenshots/trainforge-training.png) | ![TrainForge model registry](docs/assets/screenshots/trainforge-models.png) |
 | Inspect resource policy, epoch progress, metric trends, failure causes, and plain-language quality summaries. | Manage PT/ONNX artifacts, run consistency gates, and control candidate, released, and archived states. |
 
+### Mobile and tablet
+
+TrainForge uses one React application with an adaptive information architecture. At viewport widths up to `900px`, the desktop sidebar becomes fixed bottom navigation, while lists, drawers, and the annotation workspace switch to touch-oriented layouts. API behavior and persistence remain identical across viewport sizes.
+
+<p align="center">
+  <img src="docs/assets/screenshots/mobile/trainforge-mobile-overview.png" width="280" alt="TrainForge mobile dashboard">
+  &nbsp;&nbsp;
+  <img src="docs/assets/screenshots/mobile/trainforge-mobile-models.png" width="280" alt="TrainForge mobile model registry">
+</p>
+
+<p align="center"><sub>Fixed bottom navigation, single-column cards, and iPhone safe-area support</sub></p>
+
 ## Features
 
 ### Data and annotation
@@ -250,6 +262,14 @@ Deployment requirements:
 - Terminate TLS and add authentication at an external Nginx, Ingress, or cloud load balancer.
 - Keep `.env`, data, model, and database paths persistent and access-controlled.
 - Back up and verify data before deployment; rehearse migrations against a copy first.
+
+Windows maintainers can generate a verified update archive that excludes databases, weights, logs, and local configuration:
+
+```powershell
+./scripts/package-deploy.ps1
+```
+
+The script prints the archive path, size, and SHA-256 and verifies that the `registry`, `models`, API, Compose, and update-script sources are present.
 
 Historical storage-root migration is dry-run by default. Review `external_paths` and `missing_paths` before adding `--apply` to write changes to the database:
 
