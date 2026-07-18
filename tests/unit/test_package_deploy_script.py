@@ -20,3 +20,12 @@ def test_deploy_packager_never_includes_runtime_or_sensitive_file_types() -> Non
 
     for pattern in ("*.db", "*.sqlite", "*.pt", "*.onnx", ".env", "*.log"):
         assert f'"{pattern}"' in script
+
+
+def test_deploy_packager_removes_ignored_local_system_config() -> None:
+    script = (ROOT / "scripts" / "package-deploy.ps1").read_text(encoding="utf-8")
+
+    assert 'Join-Path $stagedProject "configs/system.yaml"' in script
+    assert '"signal-light-detect.yaml"' in script
+    assert '"signal-light-segment.yaml"' in script
+    assert "Unexpected task config in archive" in script

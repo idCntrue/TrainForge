@@ -64,6 +64,11 @@ $requiredEntries = @(
     "frontend/package.json"
 )
 
+$publicTaskConfigs = @(
+    "signal-light-detect.yaml",
+    "signal-light-segment.yaml"
+)
+
 try {
     $copyArguments = @(
         $SourceRoot,
@@ -88,6 +93,16 @@ try {
         Where-Object { $_.Name -ne ".env.docker.example" } |
         Remove-Item -Force
 
+    $localSystemConfig = Join-Path $stagedProject "configs/system.yaml"
+    Remove-Item -LiteralPath $localSystemConfig -Force -ErrorAction SilentlyContinue
+
+    $stagedTaskDirectory = Join-Path $stagedProject "configs/tasks"
+    if (Test-Path -LiteralPath $stagedTaskDirectory -PathType Container) {
+        Get-ChildItem -LiteralPath $stagedTaskDirectory -File -Filter "*.yaml" |
+            Where-Object { $_.Name -notin $publicTaskConfigs } |
+            Remove-Item -Force
+    }
+
     foreach ($entry in $requiredEntries) {
         $candidate = Join-Path $stagedProject ($entry -replace "/", [System.IO.Path]::DirectorySeparatorChar)
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
@@ -105,6 +120,9 @@ try {
     foreach ($entry in $archiveEntries) {
         if ($entry -match $forbiddenPattern) {
             throw "Forbidden archive entry: $entry"
+        }
+        if ($entry -match "/configs/tasks/(?<name>[^/]+\.yaml)$" -and $Matches.name -notin $publicTaskConfigs) {
+            throw "Unexpected task config in archive: $entry"
         }
     }
 
