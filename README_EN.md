@@ -249,6 +249,22 @@ Deployment requirements:
 - Keep `.env`, data, model, and database paths persistent and access-controlled.
 - Back up and verify data before deployment; rehearse migrations against a copy first.
 
+Historical storage-root migration is dry-run by default. Review `external_paths` and `missing_paths` before adding `--apply` to write changes to the database:
+
+```bash
+yolo-factory migrate-storage-paths \
+  --database /data/registry/factory.db \
+  --old-root '<OLD_STORAGE_ROOT>' \
+  --new-root /data
+
+# Run only after reviewing the dry-run report
+yolo-factory migrate-storage-paths \
+  --database /data/registry/factory.db \
+  --old-root '<OLD_STORAGE_ROOT>' \
+  --new-root /data \
+  --apply
+```
+
 ## Contributing
 
 1. Fork the repository and create a branch from `main`.
@@ -277,4 +293,3 @@ TrainForge is licensed under the [GNU Affero General Public License v3.0](LICENS
 ## Acknowledgments
 
 [Ultralytics](https://github.com/ultralytics/ultralytics) · [FastAPI](https://github.com/fastapi/fastapi) · [React](https://github.com/facebook/react) · [Ant Design](https://github.com/ant-design/ant-design) · [OpenCV](https://github.com/opencv/opencv) · [Datumaro](https://github.com/openvinotoolkit/datumaro) · [DVC](https://github.com/iterative/dvc) · [ONNX Runtime](https://github.com/microsoft/onnxruntime)
-
