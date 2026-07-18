@@ -18,6 +18,7 @@ import { TrainingResultsTab } from './training/TrainingResultsTab'
 import { TrainingArtifactsTab } from './training/TrainingArtifactsTab'
 import { trainingFormInitialValues } from './training/trainingFormDefaults'
 import { cpuTrainingPolicy, normalizeCpuTrainingValues } from './training/trainingResourcePolicy'
+import { createRequestId } from '../../requestId'
 
 const taskOptions = ['detect', 'segment'].map((value) => ({ value, label: value.toUpperCase() }))
 const statusOptions = ['queued', 'running', 'evaluating', 'exporting', 'verifying', 'completed', 'failed', 'cancelled', 'interrupted'].map((value) => ({ value, label: statusLabel(value) }))
@@ -182,7 +183,7 @@ export default function TrainingPage() {
     setRecoveryPending(true)
     try {
       const response = mode === 'safe'
-        ? await api.retryTrainingRun(selected.id, { strategy: 'safe', request_id: crypto.randomUUID() })
+        ? await api.retryTrainingRun(selected.id, { strategy: 'safe', request_id: createRequestId() })
         : await api.recoverTrainingEvaluation(selected.id)
       const child = mapTrainingRun(response)
       message.success(mode === 'safe' ? '已创建安全重试任务' : '已创建独立评估恢复任务')

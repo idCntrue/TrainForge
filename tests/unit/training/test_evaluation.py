@@ -35,4 +35,3 @@ def test_missing_metrics_stay_null_and_report_is_atomic(tmp_path: Path) -> None:
     assert report["overall"]["precision"] is None
     assert json.loads(path.read_text(encoding="utf-8"))["overall"]["map50_95"] is None
     assert not (tmp_path / "test-metrics.json.tmp").exists()
-

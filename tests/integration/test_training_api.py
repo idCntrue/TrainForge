@@ -151,14 +151,42 @@ def test_rejects_low_disk_before_creating_run(tmp_path: Path) -> None:
     assert response.status_code == 409
     assert response.json()["detail"] == {
         "code": "insufficient_training_storage",
-        "message": "训练至少需要 10 GiB 可用空间且保持 10% 空闲；当前为 5.0 GiB（5.0%）",
+        "message": "训练至少需要 8 GiB 可用空间且保持 10% 空闲；当前为 5.00 GiB（5.00%）",
         "free_gib": 5.0,
         "free_percent": 5.0,
-        "required_gib": 10,
+        "required_gib": 8,
         "required_percent": 10,
         "failed_checks": ["absolute", "percentage"],
     }
     _assert_no_training_side_effects(app, storage)
+
+
+def test_training_preflight_cleans_before_measuring_disk(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    calls: list[str] = []
+
+    def cleanup(_root: Path):
+        calls.append("cleanup")
+
+    def usage(_root: Path):
+        calls.append("measure")
+        return SimpleNamespace(total=100 * 1024**3, used=80 * 1024**3, free=20 * 1024**3)
+
+    app = create_app(
+        storage_root=storage,
+        training_engine="simulation",
+        training_step_seconds=0.2,
+        training_storage_cleanup=cleanup,
+        training_disk_usage=usage,
+    )
+
+    with TestClient(app) as client:
+        response = client.post("/api/training-runs", json=_request() | {"device": "cpu"})
+        if response.status_code == 201:
+            client.post(f"/api/training-runs/{response.json()['id']}/cancel")
+
+    assert response.status_code == 201
+    assert calls[:2] == ["cleanup", "measure"]
 
 
 def test_dataset_quality_endpoint_and_structural_preflight_have_no_run_side_effects(tmp_path: Path) -> None:

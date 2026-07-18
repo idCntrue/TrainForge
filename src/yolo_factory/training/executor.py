@@ -13,6 +13,7 @@ from yolo_factory.training.manifest import write_manifest
 from yolo_factory.training.models import TrainingRun
 from yolo_factory.training.repository import InvalidTrainingTransition, TrainingRunRepository
 from yolo_factory.training.resource_policy import TrainingResourcePolicy
+from yolo_factory.training.resource_snapshot import read_cgroup_memory_snapshot
 from yolo_factory.training.failure_diagnostics import classify_training_failure
 
 
@@ -97,6 +98,7 @@ class LocalTrainingExecutor:
                 "OPENBLAS_NUM_THREADS": thread_count,
                 "NUMEXPR_NUM_THREADS": thread_count,
             })
+        initial_resources = read_cgroup_memory_snapshot()
         process = subprocess.Popen(
             [self._python, "-m", "yolo_factory.training.runner", "--manifest", str(manifest_path)],
             stdout=log_stream,
@@ -107,7 +109,7 @@ class LocalTrainingExecutor:
         )
         log_stream.close()
         (run_directory / "process.json").write_text(
-            json.dumps({"pid": process.pid, "python": self._python}, sort_keys=True),
+            json.dumps({"pid": process.pid, "python": self._python, "initial_resources": initial_resources}, sort_keys=True),
             encoding="utf-8",
         )
         self._processes[run_id] = process
@@ -220,6 +222,19 @@ class LocalTrainingExecutor:
                 best_weight_path = None
         preserved = sum(1 for path in run_directory.rglob("*") if path.is_file() and not path.name.endswith(".tmp"))
         disk = shutil.disk_usage(run_directory)
+        resource_snapshot = read_cgroup_memory_snapshot()
+        process_metadata = _read_json(run_directory / "process.json")
+        initial_oom_kill = (process_metadata.get("initial_resources") or {}).get("cgroup_memory_oom_kill")
+        current_oom_kill = resource_snapshot.get("cgroup_memory_oom_kill")
+        resource_snapshot["cgroup_oom_kill_delta"] = (
+            max(0, current_oom_kill - initial_oom_kill)
+            if current_oom_kill is not None and initial_oom_kill is not None
+            else None
+        )
+        resource_snapshot.update({
+            "disk_free_bytes": disk.free,
+            "configured_memory_limit_bytes": _parse_byte_size(os.environ.get("API_MEMORY_LIMIT")),
+        })
         message = latest.get("technical_message") or latest.get("message") or ""
         diagnostic = classify_training_failure(
             exit_code=exit_code,
@@ -233,10 +248,7 @@ class LocalTrainingExecutor:
             exception_type=latest.get("exception_type"),
             traceback=latest.get("traceback"),
             occurred_at=latest.get("timestamp"),
-            resource_snapshot={
-                "disk_free_bytes": disk.free,
-                "configured_memory_limit_bytes": _parse_byte_size(os.environ.get("API_MEMORY_LIMIT")),
-            },
+            resource_snapshot=resource_snapshot,
         )
         _write_json_atomic(run_directory / "failure.json", diagnostic.model_dump())
         return diagnostic
@@ -294,6 +306,14 @@ def _write_json_atomic(path: Path, payload: dict) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True), encoding="utf-8")
     temporary.replace(path)
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def _parse_byte_size(value: str | None) -> int | None:

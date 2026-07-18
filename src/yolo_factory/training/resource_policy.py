@@ -31,7 +31,7 @@ class InsufficientTrainingStorage(RuntimeError):
         super().__init__(
             "Training requires at least "
             f"{required_gib} GiB and {required_percent}% free disk; "
-            f"currently {free_gib:.1f} GiB ({free_percent:.1f}%) is free"
+            f"currently {free_gib:.2f} GiB ({free_percent:.2f}%) is free"
         )
 
     def as_detail(self) -> dict[str, Any]:
@@ -39,11 +39,11 @@ class InsufficientTrainingStorage(RuntimeError):
             "code": "insufficient_training_storage",
             "message": (
                 f"训练至少需要 {self.required_gib} GiB 可用空间且保持 "
-                f"{self.required_percent}% 空闲；当前为 {self.free_gib:.1f} GiB"
-                f"（{self.free_percent:.1f}%）"
+                f"{self.required_percent}% 空闲；当前为 {self.free_gib:.2f} GiB"
+                f"（{self.free_percent:.2f}%）"
             ),
-            "free_gib": round(self.free_gib, 1),
-            "free_percent": round(self.free_percent, 1),
+            "free_gib": round(self.free_gib, 2),
+            "free_percent": round(self.free_percent, 2),
             "required_gib": self.required_gib,
             "required_percent": self.required_percent,
             "failed_checks": list(self.failed_checks),
@@ -70,7 +70,7 @@ class TrainingResourcePolicy:
     gpu_segment_max_batch: int = 2
     gpu_max_image_size: int = 1280
     gpu_allowed_devices: tuple[str, ...] = ()
-    min_free_disk_gb: int = 10
+    min_free_disk_gb: int = 8
     min_free_disk_percent: int = 10
 
     @classmethod
@@ -88,7 +88,7 @@ class TrainingResourcePolicy:
                 for device in environment.get("GPU_ALLOWED_DEVICES", "").split(",")
                 if device.strip()
             ),
-            "min_free_disk_gb": cls._positive_integer(environment, "TRAINING_MIN_FREE_DISK_GB", 10),
+            "min_free_disk_gb": cls._positive_integer(environment, "TRAINING_MIN_FREE_DISK_GB", 8),
             "min_free_disk_percent": cls._positive_integer(
                 environment, "TRAINING_MIN_FREE_DISK_PERCENT", 10
             ),

@@ -1,3 +1,5 @@
+import { createRequestId } from './requestId'
+
 export interface DashboardSummary {
   tasks: number
   video_collections: number
@@ -620,7 +622,7 @@ export const api = {
     postJson<{ export_id: string; extracted_root: string; sample_count: number }>('/annotation-exports/native', { task_id: taskId, export_name: exportName }),
   getArtifactUrl: (path: string) => `${API_BASE_URL}/artifacts?path=${encodeURIComponent(path)}`,
   getAnnotationPackageUrl: (batchId: string) => `${API_BASE_URL}/annotation-packages/${encodeURIComponent(batchId)}/download`,
-  
+
   // UI-2 new methods
   importVideos: (taskId: string, collectionId: string, sourceDir: string) =>
     postJson<{ job_id: string }>('/video-collections', { task_id: taskId, collection_id: collectionId, source_dir: sourceDir }),
@@ -631,14 +633,14 @@ export const api = {
     files.forEach((file) => form.append('files', file))
     return postFormWithProgress<{ job_id: string; uploaded_count: number; filenames: string[] }>('/video-collections/upload', form, onProgress)
   },
-  
+
   getJobStatus: (jobId: string) =>
     getJson<JobStatus>(`/jobs/${jobId}`),
-    
+
   extractFrames: (collectionId: string, batchId: string, interval: number, quality: number) =>
     postJson<{ job_id: string }>('/frame-batches', { collection_id: collectionId, batch_id: batchId, interval, quality }),
-    
-    
+
+
   listBatches: () =>
     getJson<{ id: string; collection_id: string }[]>('/frame-batches'),
   deleteFrameBatch: (id: string, deleteArtifacts = false) => deleteResource(`/frame-batches/${id}?delete_artifacts=${deleteArtifacts}`),
@@ -669,8 +671,8 @@ export const api = {
     postJson<{ affected_count: number; retention_days: number }>(`/frame-batches/${batchId}/frames/trash`, input),
   listRecycledFrames: (page = 1, pageSize = 30) => getJson<RecycledFramePage>(`/recycle-bin/frames?page=${page}&page_size=${pageSize}`),
   getRecycleBinSummary: () => getJson<RecycleBinSummary>('/recycle-bin/summary'),
-  restoreRecycledFrames: (ids: string[]) => postJson<{ affected_count: number }>('/recycle-bin/frames/restore', { ids, request_id: crypto.randomUUID() }),
-  purgeRecycledFrames: (ids: string[]) => mutateJson<{ deleted_count: number; released_bytes: number }>('DELETE', '/recycle-bin/frames', { ids, request_id: crypto.randomUUID(), confirm_count: ids.length }),
+  restoreRecycledFrames: (ids: string[]) => postJson<{ affected_count: number }>('/recycle-bin/frames/restore', { ids, request_id: createRequestId() }),
+  purgeRecycledFrames: (ids: string[]) => mutateJson<{ deleted_count: number; released_bytes: number }>('DELETE', '/recycle-bin/frames', { ids, request_id: createRequestId(), confirm_count: ids.length }),
   purgeExpiredRecycledFrames: () => postJson<{ deleted_count: number; released_bytes: number }>('/recycle-bin/purge-expired', {}),
   listDatasetReleaseImages: (releaseId: string) => getJson<Array<{ path: string; name: string; size_bytes: number }>>(`/dataset-releases/${releaseId}/images`),
   getDatasetReleaseImageUrl: (releaseId: string, path: string) => `${API_BASE_URL}/dataset-releases/${releaseId}/images/content?path=${encodeURIComponent(path)}`,
@@ -683,16 +685,16 @@ export const api = {
   },
   bulkFrameSelection: (batchId: string, input: { selection: { mode: 'explicit' | 'all_matching'; ids?: string[]; status?: string; search?: string; excluded_ids?: string[] }; target_status: string }) =>
     postJson<{ job_id: string; affected_count: number }>(`/frame-batches/${batchId}/bulk-selection`, input),
-    
+
   getBatchDuplicates: (batchId: string) =>
     getJson<DuplicateGroupSummary[]>(`/frame-batches/${batchId}/duplicates`),
-    
+
   updateFrameSelection: (batchId: string, selections: Record<string, string>) =>
     postJson<any>(`/frame-batches/${batchId}/selection`, { selections }),
-    
+
   createAnnotationPackage: (batchId: string) =>
     postJson<{ sha256: string; path: string; download_url: string }>(`/frame-batches/${batchId}/annotation-package`, {}),
-    
+
   importAnnotations: (taskId: string, archivePath: string, project: string, providerVersion: string) =>
     postJson<{ import_id: string; extracted_root: string; sample_count: number }>('/annotation-imports', {
       task_id: taskId,
@@ -708,7 +710,7 @@ export const api = {
     form.append('file', file)
     return postFormWithProgress<{ import_id: string; extracted_root: string; sample_count: number }>('/annotation-imports/upload', form, onProgress)
   },
-    
+
   releaseDataset: (taskId: string, annotationImportId: string, displayName: string, version: string, splitRatios = { train: 70, val: 20, test: 10 }, splitSeed = 42) =>
     postJson<{ release_id: string; release_path: string }>('/dataset-releases', {
       task_id: taskId,
@@ -718,7 +720,7 @@ export const api = {
       split_ratios: splitRatios,
       split_seed: splitSeed,
     }),
-    
+
   getFrameAssetUrl: (path: string) =>
     `${API_BASE_URL}/frame-assets/content?path=${encodeURIComponent(path)}`,
 }

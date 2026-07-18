@@ -69,6 +69,7 @@ import { buildDisplayNamePayload, taskDisplayNameRows, type TaskDisplayNameRow }
 import { IMAGE_UPLOAD_GUIDANCE, uploadLimitError } from './uploadPolicy'
 import { parseReviewUrlState, reviewUrlSearch } from './pages/review/reviewUrlState'
 import { reviewStatusLabel } from './pages/review/reviewStatusPresentation'
+import { createRequestId } from './requestId'
 import {
   api,
   type DashboardSummary,
@@ -727,7 +728,7 @@ function VideosView(props: {
             label="采集批次 ID (Collection ID)"
             rules={[{ required: true, message: '请输入采集批次 ID' }]}
           >
-            <Input placeholder="例如: otis-collection-20260713" />
+            <Input placeholder="例如: signal-light-collection-001" />
           </Form.Item>
           <Form.Item
             label="视频文件"
@@ -769,7 +770,7 @@ function VideosView(props: {
             label="生成抽帧批次 ID (Batch ID)"
             rules={[{ required: true, message: '请输入抽帧批次 ID' }]}
           >
-            <Input placeholder="例如: frames-otis-001" />
+            <Input placeholder="例如: frames-signal-light-001" />
           </Form.Item>
           <Form.Item
             name="interval"
@@ -1093,8 +1094,8 @@ function ReviewWorkspace(props: {
       okButtonProps: { danger: true },
       onOk: async () => {
         const result = await api.trashBatchFrames(selectedBatchId, allMatching
-          ? { mode: 'all_matching', status: statusFilter === 'all' ? undefined : statusFilter, search, excluded_ids: excludedFrameIds, request_id: crypto.randomUUID() }
-          : { mode: 'explicit', ids: explicitIds, request_id: crypto.randomUUID() })
+          ? { mode: 'all_matching', status: statusFilter === 'all' ? undefined : statusFilter, search, excluded_ids: excludedFrameIds, request_id: createRequestId() }
+          : { mode: 'explicit', ids: explicitIds, request_id: createRequestId() })
         setAllMatching(false); setExcludedFrameIds([]); setSelectedFrameNames([]); setSelectionAnchor(null)
         await Promise.all([loadFramePage(selectedBatchId, 1, pageSize, statusFilter, search), refreshRecycleSummary()])
         props.refreshDashboard()
@@ -1362,7 +1363,7 @@ function ReviewWorkspace(props: {
                           <div className={`image-card ${status.startsWith('rejected') ? 'rejected' : status === 'selected' ? 'selected' : ''} ${checked ? 'bulk-selected' : ''}`} key={frame.id} onClick={(event) => { if (!(event.target as HTMLElement).closest('.ant-select')) toggleFrameSelection(frame.filename, event.shiftKey) }}>
                             <label className="image-select-checkbox" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={checked} readOnly onClick={(event) => toggleFrameSelection(frame.filename, event.shiftKey)} /><span>选择</span></label>
                             <img alt={frame.filename} className="image-card-img" src={imageSrc} />
-                            
+
                             {/* Visual status badge */}
                             {status === 'selected' && <div className="image-badge selected">{reviewStatusLabel(status)}</div>}
                             {status.startsWith('rejected') && <div className="image-badge rejected">{reviewStatusLabel(status)}</div>}
@@ -1405,7 +1406,7 @@ function ReviewWorkspace(props: {
                       <Button type="primary" icon={<Download size={14} />} onClick={handleExportPackage} loading={packaging}>
                         导出 ZIP 标注包
                       </Button>
-                      
+
                       {packageResult && (
                         <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 4 }}>
                           <div><strong>SHA-256:</strong> <code style={{ fontSize: 11 }}>{packageResult.sha256}</code></div>
@@ -1418,7 +1419,7 @@ function ReviewWorkspace(props: {
                       )}
                     </Card>
                   </Col>
-                  
+
                   <Col span={12}>
                     <Card title="第2步: 回导 Roboflow 标注 ZIP" style={{ height: '100%' }}>
                       <p>完成 Roboflow 标注后，下载对应的 YOLO 分割/检测压缩包，在下方进行安全解压与数据格式严格校验。</p>
@@ -1426,14 +1427,14 @@ function ReviewWorkspace(props: {
                         <Button type="primary" icon={<Upload size={14} />} onClick={() => {
                           importForm.setFieldsValue({
                             task_id: props.tasks[0]?.id,
-                            project: 'otis-inspection-segment',
+                            project: props.tasks[0]?.id,
                             provider_version: '1'
                           })
                           setImportVisible(true)
                         }}>
                           导入标注 ZIP 包
                         </Button>
-                        
+
                         {importedId && (
                           <div style={{ marginTop: 16, padding: 12, background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 4 }}>
                             <Alert type="success" showIcon message="标注已安全载入" description={`Import ID: ${importedId}`} style={{ marginBottom: 12 }} />
@@ -1566,7 +1567,7 @@ function ReviewWorkspace(props: {
             {uploadingAnnotations && annotationUploadProgress >= 100 && <Alert type="info" showIcon message="文件传输完成，服务器正在解压并校验图片、标签和标注几何" style={{ marginTop: 12 }} />}
           </Form.Item>
           <Form.Item name="project" label="Roboflow 项目名称 (Project Name)" rules={[{ required: true, message: '请输入项目名称' }]}>
-            <Input placeholder="例如: otis-inspection-segment" />
+            <Input placeholder="例如: signal-light-segmentation" />
           </Form.Item>
           <Form.Item name="provider_version" label="Roboflow 项目导出版号 (Version)" rules={[{ required: true, message: '请输入版本号' }]}>
             <Input placeholder="例如: 1" />

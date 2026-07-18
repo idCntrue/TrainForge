@@ -25,4 +25,3 @@ def test_local_storage_rejects_unsafe_keys(tmp_path: Path, key: str) -> None:
     storage = LocalObjectStorage(tmp_path)
     with pytest.raises(ValueError, match="storage key"):
         storage.put_bytes(key, b"image")
-

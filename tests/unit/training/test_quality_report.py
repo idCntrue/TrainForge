@@ -49,4 +49,3 @@ def test_distinguishes_trial_from_needs_improvement() -> None:
     }
     assert build_quality_report("detect", evidence, _metrics(0.65, 0.65, 0.35), 10)["verdict"] == "trial"
     assert build_quality_report("detect", evidence, _metrics(0.4, 0.5, 0.2), 10)["verdict"] == "needs_improvement"
-

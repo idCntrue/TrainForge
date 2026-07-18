@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createApiPlatformRepository } from './apiPlatformRepository'
 
 const model = {
-  id: 'model-001', name: 'OTIS Segment', version: '0.1.0', task_type: 'segment', training_run_id: 'training-001',
+  id: 'model-001', name: 'Example Segment', version: '0.1.0', task_type: 'segment', training_run_id: 'training-001',
   dataset_release_id: 'dataset-001', selected_classes: ['door'], class_aliases: {}, metrics: { mask_map50: 0.42 }, status: 'published',
   gates: { training: true, pt: true, onnx: true, consistency: true },
   artifacts: { pt: { path: 'best.pt', sha256: 'abc', size_bytes: 5_000_000 }, onnx: { path: 'best.onnx', sha256: 'def', size_bytes: 10_000_000 } },

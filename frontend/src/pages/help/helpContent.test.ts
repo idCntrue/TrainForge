@@ -38,7 +38,7 @@ describe('offline help content', () => {
   it.each([
     'CPU 安全模式',
     'API_MEMORY_LIMIT',
-    '10 GiB',
+    '8 GiB',
     'update-from-package.sh',
   ])('documents bounded training and safe update topic: %s', (keyword) => {
     expect(searchHelp(keyword).map((chapter) => chapter.id)).toContain('deployment')

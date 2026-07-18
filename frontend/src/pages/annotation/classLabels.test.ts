@@ -11,7 +11,7 @@ describe('formatClassLabel', () => {
 
 describe('resolveAnnotationTaskId', () => {
   it('falls back to the current image task when the toolbar has no selection', () => {
-    expect(resolveAnnotationTaskId(undefined, 'otis-segmentation')).toBe('otis-segmentation')
+    expect(resolveAnnotationTaskId(undefined, 'example-segmentation')).toBe('example-segmentation')
     expect(resolveAnnotationTaskId('selected-task', 'image-task')).toBe('selected-task')
   })
 })

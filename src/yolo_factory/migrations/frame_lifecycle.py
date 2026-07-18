@@ -53,4 +53,3 @@ def migrate_frame_lifecycle(database: Path) -> FrameLifecycleMigrationReport:
             "CREATE INDEX IF NOT EXISTS ix_frame_assets_purge_after ON frame_assets(purge_after)"
         )
     return FrameLifecycleMigrationReport(added)
-

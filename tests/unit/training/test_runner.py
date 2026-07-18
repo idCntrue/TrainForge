@@ -39,4 +39,3 @@ def test_runner_persists_traceback_phase_and_last_successful_epoch(
     assert failed["exception_type"] == "RuntimeError"
     assert failed["technical_message"] == "deterministic training failure"
     assert "raise RuntimeError(\"deterministic training failure\")" in failed["traceback"]
-

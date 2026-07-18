@@ -6,13 +6,13 @@ import type { DatasetReleaseSummary } from '../../api'
 import { formatDatasetReleaseLabel, resolveDatasetReleaseLabel } from './datasetReleasePresentation'
 
 const release = {
-  id: 'dataset-otis-inspection-segmentation-0.1.3',
-  task_id: 'otis-inspection-segmentation',
+  id: 'dataset-example-segmentation-0.1.3',
+  task_id: 'example-segmentation',
   annotation_export_id: 'annotation-1',
-  display_name: '电梯标识分割数据集',
+  display_name: '示例分割数据集',
   version: '0.1.3',
   status: 'published',
-  release_path: 'dataset-releases/otis/dataset-v0.1.3',
+  release_path: 'dataset-releases/example/dataset-v0.1.3',
   created_at: '2026-07-16T00:00:00Z',
   requested_ratios: null,
   actual_ratios: {},
@@ -24,19 +24,19 @@ const release = {
 describe('dataset release presentation', () => {
   it('formats a readable name, version, and task identifier', () => {
     expect(formatDatasetReleaseLabel(release)).toBe(
-      '电梯标识分割数据集 · v0.1.3 · otis-inspection-segmentation',
+      '示例分割数据集 · v0.1.3 · example-segmentation',
     )
   })
 
   it('falls back to the task identifier for legacy runtime payloads', () => {
     expect(formatDatasetReleaseLabel({ ...release, display_name: '' })).toBe(
-      'otis-inspection-segmentation · v0.1.3 · otis-inspection-segmentation',
+      'example-segmentation · v0.1.3 · example-segmentation',
     )
   })
 
   it('resolves a training release id and preserves unknown ids', () => {
     expect(resolveDatasetReleaseLabel(release.id, [release])).toBe(
-      '电梯标识分割数据集 · v0.1.3 · otis-inspection-segmentation',
+      '示例分割数据集 · v0.1.3 · example-segmentation',
     )
     expect(resolveDatasetReleaseLabel('missing-release', [release])).toBe('missing-release')
   })

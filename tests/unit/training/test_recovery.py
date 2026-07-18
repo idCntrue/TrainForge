@@ -32,4 +32,3 @@ def test_non_retryable_failure_requires_user_action() -> None:
 
     assert plan.allowed is False
     assert "磁盘" in plan.reason
-

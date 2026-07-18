@@ -130,13 +130,27 @@ def test_docker_environment_documents_training_resource_limits() -> None:
         "GPU_TRAINING_MAX_IMAGE_SIZE=1280",
         "GPU_ALLOWED_DEVICES=",
         "YOLO_FACTORY_MAX_UPLOAD_BYTES=2147483648",
-        "TRAINING_MIN_FREE_DISK_GB=10",
+        "TRAINING_MIN_FREE_DISK_GB=8",
         "TRAINING_MIN_FREE_DISK_PERCENT=10",
         "CORS_ALLOWED_ORIGINS=",
     ]:
         assert setting in environment
     assert "YOLO_FACTORY_MAX_UPLOAD_BYTES: ${YOLO_FACTORY_MAX_UPLOAD_BYTES:-2147483648}" in _text("compose.yaml")
     assert "client_max_body_size 2g;" in _text("docker/nginx.conf")
+
+
+def test_deploy_cleanup_preserves_current_and_rollback_images_without_touching_volumes() -> None:
+    script = _text("docker/deploy.sh")
+
+    assert "docker builder prune -af" in script
+    assert '"$tag" = "$NEW_TAG"' in script
+    assert '"$tag" = "$OLD_TAG"' in script
+    assert "docker image rm" in script
+    assert "--volumes" not in script
+    assert "docker system prune" not in script
+    assert "TRAINING_MIN_FREE_DISK_GB=10" in script
+    assert "TRAINING_MIN_FREE_DISK_GB=8" in script
+    assert script.index("docker builder prune -af") < script.index("docker compose build")
 
 
 def test_github_workflow_tests_packages_and_ssh_deploys_without_secrets_in_source() -> None:

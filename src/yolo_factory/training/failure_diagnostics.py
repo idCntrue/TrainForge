@@ -67,10 +67,13 @@ def classify_training_failure(
 ) -> TrainingFailureDiagnostic:
     combined = "\n".join([message, *log_tail]).lower()
     evidence: list[str] = []
+    snapshot = resource_snapshot or {}
 
     if exit_code in {-9, 137}:
         code = "resource_limit"
         evidence.append(f"process exit code {exit_code} indicates an external SIGKILL")
+        if (snapshot.get("cgroup_oom_kill_delta") or 0) > 0:
+            evidence.append("confirmed cgroup OOM kill during this training run")
     else:
         signatures = (
             ("disk_full", ("no space left on device", "errno 28")),
@@ -112,6 +115,6 @@ def classify_training_failure(
         total_epochs=total_epochs,
         occurred_at=occurred_at or datetime.now(timezone.utc).isoformat(),
         evidence=tuple(evidence),
-        resource_snapshot=resource_snapshot or {},
+        resource_snapshot=snapshot,
         recoverability=recovery,
     )

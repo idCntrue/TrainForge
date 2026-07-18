@@ -19,7 +19,7 @@ def test_loads_safe_defaults_from_empty_environment() -> None:
     assert policy.detect_max_batch == 4
     assert policy.segment_max_batch == 1
     assert policy.max_image_size == 640
-    assert policy.min_free_disk_gb == 10
+    assert policy.min_free_disk_gb == 8
     assert policy.min_free_disk_percent == 10
 
 
@@ -94,7 +94,7 @@ def test_builds_bounded_execution_policy() -> None:
 def test_rejects_disk_when_either_absolute_or_percentage_reserve_is_too_low(tmp_path) -> None:
     policy = TrainingResourcePolicy.from_environment({})
 
-    with pytest.raises(InsufficientTrainingStorage, match="at least 10 GiB and 10%") as absolute:
+    with pytest.raises(InsufficientTrainingStorage, match="at least 8 GiB and 10%") as absolute:
         policy.validate_free_disk(
             tmp_path,
             usage=lambda _: SimpleNamespace(total=50 * GIB, used=43 * GIB, free=7 * GIB),
@@ -103,7 +103,7 @@ def test_rejects_disk_when_either_absolute_or_percentage_reserve_is_too_low(tmp_
     assert absolute.value.free_gib == pytest.approx(7.0)
     assert absolute.value.free_percent == pytest.approx(14.0)
 
-    with pytest.raises(InsufficientTrainingStorage, match="at least 10 GiB and 10%") as percentage:
+    with pytest.raises(InsufficientTrainingStorage, match="at least 8 GiB and 10%") as percentage:
         policy.validate_free_disk(
             tmp_path,
             usage=lambda _: SimpleNamespace(total=1000 * GIB, used=980 * GIB, free=20 * GIB),
@@ -116,3 +116,16 @@ def test_rejects_disk_when_either_absolute_or_percentage_reserve_is_too_low(tmp_
         tmp_path,
         usage=lambda _: SimpleNamespace(total=100 * GIB, used=80 * GIB, free=20 * GIB),
     )
+
+
+def test_disk_error_preserves_two_decimal_places() -> None:
+    policy = TrainingResourcePolicy(min_free_disk_gb=10)
+
+    with pytest.raises(InsufficientTrainingStorage) as error:
+        policy.validate_free_disk(
+            ".",
+            usage=lambda _: SimpleNamespace(total=40 * GIB, used=30.04 * GIB, free=9.96 * GIB),
+        )
+
+    assert "9.96 GiB" in str(error.value)
+    assert error.value.as_detail()["free_gib"] == 9.96

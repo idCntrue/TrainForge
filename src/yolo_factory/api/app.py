@@ -75,6 +75,7 @@ from yolo_factory.training.resource_policy import (
     TrainingResourcePolicy,
     UnsafeTrainingConfiguration,
 )
+from yolo_factory.training.storage_cleanup import cleanup_training_storage
 from yolo_factory.training.recovery import plan_safe_retry
 from yolo_factory.training.presets import resolve_training_preset
 from yolo_factory.datasets.quality import analyze_dataset_quality
@@ -347,6 +348,7 @@ def create_app(
     sam_executor=None,
     training_resource_policy: TrainingResourcePolicy | None = None,
     training_disk_usage=shutil.disk_usage,
+    training_storage_cleanup=cleanup_training_storage,
 ) -> FastAPI:
     root = (storage_root or _default_storage_root()).resolve()
     max_upload_bytes = _upload_byte_limit()
@@ -397,6 +399,13 @@ def create_app(
     training_executor.recover_stale_runs()
     app.state.training_repository = training_repository
     app.state.training_executor = training_executor
+
+    def prepare_training_storage() -> None:
+        try:
+            app.state.last_training_cleanup = training_storage_cleanup(root)
+        except Exception as exc:
+            app.state.last_training_cleanup = {"errors": (str(exc),)}
+        resource_policy.validate_free_disk(root, usage=training_disk_usage)
     model_repository = ModelVersionRepository(registry)
     gate_executor = model_gate_executor or LocalModelGateExecutor(root)
     app.state.model_repository = model_repository
@@ -756,7 +765,7 @@ def create_app(
                 batch=req.batch,
                 image_size=req.image_size,
             )
-            resource_policy.validate_free_disk(root, usage=training_disk_usage)
+            prepare_training_storage()
         except UnsafeTrainingConfiguration as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except InsufficientTrainingStorage as exc:
@@ -911,7 +920,7 @@ def create_app(
                 source.spec.task_type, source.spec.device,
                 batch=plan.batch, image_size=plan.image_size,
             )
-            resource_policy.validate_free_disk(root, usage=training_disk_usage)
+            prepare_training_storage()
         except UnsafeTrainingConfiguration as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except InsufficientTrainingStorage as exc:
@@ -978,7 +987,7 @@ def create_app(
                 source.spec.task_type, source.spec.device,
                 batch=source.spec.batch, image_size=source.spec.image_size,
             )
-            resource_policy.validate_free_disk(root, usage=training_disk_usage)
+            prepare_training_storage()
         except UnsafeTrainingConfiguration as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except InsufficientTrainingStorage as exc:

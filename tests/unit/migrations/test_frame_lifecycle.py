@@ -22,4 +22,3 @@ def test_adds_and_backfills_frame_lifecycle_columns_idempotently(tmp_path: Path)
             "SELECT lifecycle_status, storage_provider, storage_key, size_bytes FROM frame_assets"
         ).fetchone()
     assert row == ("active", "local", "frames/one.jpg", 0)
-

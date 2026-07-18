@@ -1,0 +1,54 @@
+# 当前项目状态
+
+更新日期：2026-07-18。
+
+## 已实现能力
+
+| 模块 | 状态 | 说明 |
+| --- | --- | --- |
+| 数据导入 | 已完成 | 浏览器上传图片和视频、流式落盘、SHA-256 去重、视频检查与抽帧 |
+| 数据筛选 | 已完成 | 服务端分页、跨页批量操作、追加图片/视频、七天回收站与主动清理 |
+| 原生标注 | 已完成 | 检测框、分割多边形、顶点编辑、类别管理、修订冲突与复核状态 |
+| SAM2 | 已完成 | Tiny/Small 正负点预览与辅助分割，独立进程执行 |
+| 数据集版本 | 已完成 | 原生 YOLO/Roboflow ZIP、结构校验、固定 split、质量报告和不可变发布 |
+| 训练 | 已完成 | Ultralytics detect/segment、预设/自定义权重、进度、取消、恢复、安全重试和独立评估 |
+| 模型中心 | 已完成 | PT/ONNX 制品、运行门禁、候选/发布/归档状态与安全删除 |
+| 推理 | 已完成 | PT/CUDA、ONNX/CPU，支持图片、批量图片和视频异步任务 |
+| 容器部署 | 已完成 | CPU/GPU Compose、健康检查、SQLite 在线备份、失败回滚和包更新 |
+
+## 训练资源保护
+
+- CPU 检测默认 Batch 2、上限 4；CPU 分割默认 Batch 1、上限 1；CPU 训练 worker 为 0，数据缓存关闭。
+- 创建训练、安全重试和独立评估前，先清理可再生成缩略图、超过保留期的上传暂存目录和遗留临时文件。
+- 自动清理不包含 SQLite、数据集、帧批次、原始媒体、标注、模型权重或正式训练产物。
+- 默认磁盘门禁同时要求至少 `8 GiB` 和 `10%` 空闲；小容量系统盘仍建议保持 `10-12 GiB` 以上。
+- 部署脚本在构建前后清理 Docker 构建缓存与过旧项目镜像，保留当前镜像和一个回滚版本，不删除 Docker volumes。
+- 普通 HTTP 和 HTTPS 环境均可生成幂等请求 ID，安全重试不会依赖浏览器必须提供 `crypto.randomUUID()`。
+- 失败诊断记录 cgroup 内存限制、当前值、峰值和每次运行的 OOM kill 增量；`exit -9`/`137` 不再被直接等同于已确认 OOM。
+
+## 数据与部署边界
+
+当前版本是面向单节点和小团队的应用：SQLite、受管本地目录和本地子进程构成运行时。源码更新包不包含数据库、业务图片、标注、数据集、模型权重、日志、`.env` 或服务器信息。生产更新复用线上 `.env` 和持久化挂载，并在切换容器前使用 SQLite Backup API 创建时间戳备份。
+
+面向多实例或多租户场景，建议逐步替换为 PostgreSQL、对象存储、持久化任务队列和远程 GPU Worker，并补充按租户配额与审计能力。
+
+## 验证方式
+
+项目状态以当前自动化测试和生产构建结果为准，不在公开文档中保存客户任务 ID、真实业务指标、服务器地址、数据库数量或临时部署标签。
+
+```bash
+python -m pytest
+
+cd frontend
+npm test -- --run
+npm run build
+```
+
+云端部署应至少验证：
+
+```bash
+docker compose ps
+curl http://127.0.0.1:${WEB_PORT:-8080}/api/health
+docker compose exec -T api python3.10 -c \
+  "import sqlite3; db=sqlite3.connect('file:/data/registry/factory.db?mode=ro', uri=True); print(db.execute('PRAGMA integrity_check').fetchone()[0])"
+```

@@ -30,6 +30,17 @@ def test_classifies_resource_kill_without_claiming_confirmed_oom() -> None:
     assert killed.recoverability.can_evaluate_best is False
     assert "OOM" not in killed.technical_message
     assert any("137" in evidence for evidence in killed.evidence)
+    assert not any("confirmed cgroup OOM" in evidence for evidence in killed.evidence)
+
+
+def test_marks_sigkill_as_confirmed_oom_only_with_event_delta() -> None:
+    killed = _classify(
+        exit_code=-9,
+        resource_snapshot={"cgroup_oom_kill_delta": 1, "cgroup_memory_peak_bytes": 8 * 1024**3},
+    )
+
+    assert killed.code == "resource_limit"
+    assert any("confirmed cgroup OOM" in evidence for evidence in killed.evidence)
 
 
 def test_classifies_post_training_failure_with_recoverable_best_weight() -> None:
@@ -67,4 +78,3 @@ def test_known_exit_code_has_priority_over_vague_log_keyword() -> None:
     diagnostic = _classify(exit_code=137, log_tail=["old warning: no space left on device"])
 
     assert diagnostic.code == "resource_limit"
-

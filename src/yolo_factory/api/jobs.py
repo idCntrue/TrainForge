@@ -46,7 +46,7 @@ class JobTracker:
 
     def start_background_task(self, target: Callable[[str, Any], None], args: Any = None, message: str = "正在执行后台任务"):
         job_id = self.create_job(message)
-        
+
         def wrapper():
             try:
                 self.update_job(job_id, status="running", progress=0.0, message=message)
@@ -56,7 +56,7 @@ class JobTracker:
                 import traceback
                 traceback.print_exc()
                 self.update_job(job_id, status="failed", progress=0.0, message=f"任务执行失败: {str(e)}")
-        
+
         t = threading.Thread(target=wrapper, daemon=True)
         t.start()
         return job_id

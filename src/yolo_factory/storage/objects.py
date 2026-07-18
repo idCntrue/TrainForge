@@ -57,4 +57,3 @@ class LocalObjectStorage:
     def size(self, key: str) -> int:
         path = self._path(key)
         return path.stat().st_size if path.is_file() else 0
-

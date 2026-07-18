@@ -35,10 +35,31 @@ rollback() {
   docker compose up -d --no-build --remove-orphans
 }
 
+cleanup_docker_storage() {
+  echo "Cleaning Docker build cache and obsolete TrainForge images"
+  docker builder prune -af || true
+  docker images --format '{{.Repository}} {{.Tag}}' | while read -r repository tag; do
+    case "$repository" in
+      yolo-model-factory-api|yolo-model-factory-web)
+        if [ "$tag" = "$NEW_TAG" ] || [ "$tag" = "$OLD_TAG" ]; then
+          continue
+        fi
+        docker image rm "$repository:$tag" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done
+  docker image prune -f >/dev/null 2>&1 || true
+}
+
 test -f .env || { echo "Missing $PROJECT_DIR/.env" >&2; exit 2; }
+# Migrate only the former project default; preserve intentional custom limits.
+if grep -q '^TRAINING_MIN_FREE_DISK_GB=10$' .env; then
+  sed -i 's/^TRAINING_MIN_FREE_DISK_GB=10$/TRAINING_MIN_FREE_DISK_GB=8/' .env
+fi
 export IMAGE_TAG=$NEW_TAG
 docker compose config --quiet
 
+cleanup_docker_storage
 echo "Building Docker images with tag $NEW_TAG"
 docker compose build
 
@@ -57,6 +78,7 @@ attempt=0
 while [ "$attempt" -lt 60 ]; do
   if curl --fail --silent "http://127.0.0.1:$WEB_PORT/api/health" >/dev/null; then
     persist_tag "$NEW_TAG"
+    cleanup_docker_storage
     echo "Deployment healthy: image tag $NEW_TAG, port $WEB_PORT"
     exit 0
   fi

@@ -28,7 +28,7 @@ TrainForge 将数据导入、筛选、标注、数据集发布、训练、评估
 - **完整工作流：** 不再用脚本、目录和表格拼接数据到模型的过程。
 - **可追溯发布：** 数据集、训练参数、权重、评估结果与模型状态保持关联。
 - **检测与分割统一：** 支持 YOLO detect/segment、框与多边形标注、SAM2 辅助分割。
-- **面向受限服务器：** 提供 CPU/GPU 参数上限、磁盘门禁、重型任务互斥和失败诊断。
+- **面向受限服务器：** 提供 CPU/GPU 参数上限、训练前安全清理、8 GiB/10% 磁盘门禁、重型任务互斥和基于 cgroup 证据的失败诊断。
 - **真实执行而非静态 Demo：** Web 与 CLI 都调用同一套领域服务和受管存储。
 - **部署更新保护：** Docker 更新脚本保留 `.env`、数据目录、模型目录和 SQLite 数据库。
 
@@ -60,7 +60,9 @@ TrainForge 将数据导入、筛选、标注、数据集发布、训练、评估
 
 - YOLOv8、YOLO11、YOLO26 预设及自定义 Ultralytics 权重。
 - `smoke`、`cpu-balanced`、`gpu-quality` 训练预设和 class 子集训练。
-- 独立进程训练、进度与日志、取消、重启恢复、安全重试和失败诊断。
+- 独立进程训练、进度与日志、取消、重启恢复，以及兼容普通 HTTP 环境的幂等安全重试。
+- 训练前仅清理可再生成缓存和过期暂存文件；SQLite、数据集、标注、权重和正式训练产物不在自动清理范围内。
+- 记录 cgroup 内存限制、当前值、峰值和本次运行的 OOM kill 增量，区分已确认 OOM 与原因未确认的外部 `SIGKILL`。
 - test 集评估、数据质量报告、类别指标和最佳权重恢复评估。
 - PT/ONNX 制品管理、opset 17 导出、一致性门禁、发布和归档。
 - PT/CUDA 与 ONNX/CPU 的图片、批量图片和视频异步推理。
@@ -207,7 +209,7 @@ cp .env.docker.example .env
 | `GPU_DETECT_MAX_BATCH` | `8` | GPU 检测最大 Batch |
 | `GPU_SEGMENT_MAX_BATCH` | `2` | GPU 分割最大 Batch |
 | `YOLO_FACTORY_MAX_UPLOAD_BYTES` | `2147483648` | 单文件上传上限 |
-| `TRAINING_MIN_FREE_DISK_GB` | `10` | 训练前最小空闲 GiB |
+| `TRAINING_MIN_FREE_DISK_GB` | `8` | 训练前最小空闲 GiB；仍建议保持 10-12 GiB 以上 |
 | `TRAINING_MIN_FREE_DISK_PERCENT` | `10` | 训练前最小空闲百分比 |
 
 完整配置参见 [.env.docker.example](.env.docker.example)。

@@ -58,4 +58,3 @@ def test_blocks_missing_and_malformed_labels(tmp_path: Path) -> None:
     assert report.missing_label_files
     assert "missing_label_files" in report.blockers
     assert "malformed_or_out_of_range_labels" in report.blockers
-

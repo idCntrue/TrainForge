@@ -65,6 +65,7 @@ def test_start_persists_execution_policy_and_isolates_thread_environment(
     cpu_spec = TrainingRunSpec("cpu", "detect", "dataset-lights-1.0.0", "yolo11n.pt", 5, 2, 320, "cpu")
     repository.create(cpu_spec, run_id="run-cpu")
     captured: dict = {}
+    call_order: list[str] = []
 
     class FakeProcess:
         pid = 12345
@@ -73,10 +74,16 @@ def test_start_persists_execution_policy_and_isolates_thread_environment(
             return None
 
     def fake_popen(*args, **kwargs):
+        call_order.append("popen")
         captured.update(kwargs)
         return FakeProcess()
 
     monkeypatch.setattr(executor_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        executor_module,
+        "read_cgroup_memory_snapshot",
+        lambda: call_order.append("snapshot") or {"cgroup_memory_oom_kill": 0},
+    )
     before = dict(os.environ)
     executor = LocalTrainingExecutor(
         repository,
@@ -97,6 +104,7 @@ def test_start_persists_execution_policy_and_isolates_thread_environment(
         "NUMEXPR_NUM_THREADS": "3",
     }
     assert dict(os.environ) == before
+    assert call_order[:2] == ["snapshot", "popen"]
 
 
 def test_simulated_subprocess_completes_release_gates(tmp_path: Path) -> None:

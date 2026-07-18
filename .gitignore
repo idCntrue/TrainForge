@@ -59,10 +59,10 @@ configs/system.local.yaml
 configs/system.local.yml
 /configs/system.yaml
 
-# Internal task definitions discovered during the open-source audit.
-# Keep only anonymized examples such as signal-light-*.yaml in the public repository.
-configs/tasks/otis-*.yaml
-configs/tasks/cloud-defects.yaml
+# Task definitions may contain internal class names. Publish reviewed examples only.
+configs/tasks/*.yaml
+!configs/tasks/signal-light-detect.yaml
+!configs/tasks/signal-light-segment.yaml
 
 # Databases and database dumps
 *.db
@@ -203,9 +203,5 @@ $RECYCLE.BIN/
 /docs/cloud-deployment-current-state.md
 /docs/incidents/
 /docs/superpowers/
-/docs/architecture.md
-/docs/current-status.md
-/docs/workflow-tutorial.md
-/docs/ui-guide.md
 /docs/*审计报告*.md
 /docs/*评估报告*.md

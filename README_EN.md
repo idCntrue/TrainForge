@@ -28,7 +28,7 @@ TrainForge brings data ingestion, curation, annotation, dataset releases, traini
 - **One continuous workflow:** replace disconnected scripts, folders, and spreadsheets with a managed pipeline.
 - **Traceable releases:** connect datasets, training parameters, weights, evaluation evidence, and model status.
 - **Detection and segmentation:** support YOLO detect/segment, boxes, polygons, and SAM2-assisted segmentation.
-- **Resource-aware execution:** enforce CPU/GPU limits, disk gates, heavy-operation locks, and actionable failure diagnostics.
+- **Resource-aware execution:** enforce CPU/GPU limits, safe pre-training cleanup, an 8 GiB/10% disk gate, heavy-operation locks, and cgroup-backed failure diagnostics.
 - **Real execution:** the Web UI and CLI use the same domain services and managed storage.
 - **Protected updates:** Docker update tooling preserves environment configuration, data, models, and SQLite state.
 
@@ -60,7 +60,9 @@ TrainForge brings data ingestion, curation, annotation, dataset releases, traini
 
 - YOLOv8, YOLO11, and YOLO26 presets plus custom Ultralytics weights.
 - `smoke`, `cpu-balanced`, and `gpu-quality` presets with class-subset training.
-- Isolated training processes, progress and logs, cancellation, restart recovery, safe retry, and failure diagnostics.
+- Isolated training processes, progress and logs, cancellation, restart recovery, and idempotent safe retry that also works on plain HTTP deployments.
+- Pre-training cleanup is restricted to regenerable caches and expired staging files; SQLite, datasets, annotations, weights, and retained training artifacts are protected.
+- cgroup memory limit, current usage, peak usage, and per-run OOM-kill deltas distinguish confirmed OOM failures from unconfirmed external `SIGKILL` events.
 - Test-set evaluation, dataset quality reports, per-class metrics, and best-weight recovery evaluation.
 - PT/ONNX artifact management, opset 17 export, consistency gates, release, and archive states.
 - Asynchronous image, image-batch, and video inference with PT/CUDA or ONNX/CPU.
@@ -207,7 +209,7 @@ cp .env.docker.example .env
 | `GPU_DETECT_MAX_BATCH` | `8` | Maximum GPU detection batch |
 | `GPU_SEGMENT_MAX_BATCH` | `2` | Maximum GPU segmentation batch |
 | `YOLO_FACTORY_MAX_UPLOAD_BYTES` | `2147483648` | Per-file upload limit |
-| `TRAINING_MIN_FREE_DISK_GB` | `10` | Required free GiB before training |
+| `TRAINING_MIN_FREE_DISK_GB` | `8` | Required free GiB before training; 10-12 GiB remains recommended |
 | `TRAINING_MIN_FREE_DISK_PERCENT` | `10` | Required free-disk percentage |
 
 See [.env.docker.example](.env.docker.example) for the complete configuration.
