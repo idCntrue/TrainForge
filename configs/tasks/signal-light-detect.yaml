@@ -1,0 +1,8 @@
+task_id: signal-light-detection
+task_type: detect
+classes:
+  - red
+  - yellow
+  - green
+annotation_format: yolo-detect
+

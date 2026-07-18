@@ -1,0 +1,7 @@
+task_id: signal-light-segmentation
+task_type: segment
+classes:
+  - red
+  - yellow
+  - green
+annotation_format: yolo-seg

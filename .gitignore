@@ -1,0 +1,211 @@
+# YOLO Model Factory repository hygiene
+# Keep source, migrations, anonymized examples, lock files, and tests in Git.
+# Keep all runtime data, credentials, local configuration, media, and model artifacts out.
+
+# Agent, worktree, and local automation state
+/.codex/
+/.superpowers/
+/.worktrees/
+
+# Python bytecode, tooling, coverage, and packaging
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+build/
+dist/
+wheelhouse/
+
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Node.js, Vite, TypeScript, and frontend reports
+node_modules/
+frontend/node_modules/
+frontend/dist/
+.vite/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment variables and local configuration
+.env
+.env.*
+!.env.example
+!.env.docker.example
+*.local
+*.local.*
+config.local.*
+configs/system.local.yaml
+configs/system.local.yml
+/configs/system.yaml
+
+# Internal task definitions discovered during the open-source audit.
+# Keep only anonymized examples such as signal-light-*.yaml in the public repository.
+configs/tasks/otis-*.yaml
+configs/tasks/cloud-defects.yaml
+
+# Databases and database dumps
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.mdb
+*.accdb
+*.sql
+*.dump
+*.rdb
+# Explicitly allow future reviewed schema-only SQL migration directories.
+!migrations/**/*.sql
+!schema/**/*.sql
+
+# Secrets, keys, certificates, and credential stores
+*.pem
+*.key
+*.p8
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.crt
+*.cer
+*.der
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+.npmrc
+.pypirc
+credentials.json
+secrets.*
+
+# Runtime storage and application-generated data
+/.local-data/
+/storage/
+/docker-data/
+/workspaces/
+/artifacts/
+/logs/
+/runs/
+/tmp/
+/temp/
+/cache/
+/staging/
+/quarantine/
+/registry/
+/models/
+/data/
+
+# DVC local state and cache (tracked .dvc metadata files remain allowed)
+/.dvc/cache/
+/.dvc/tmp/
+
+# Raw media, annotations, datasets, archives, and generated manifests
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.webp
+*.tif
+*.tiff
+*.gif
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+# Public documentation media may be committed only after license and privacy review.
+!docs/assets/**/*.png
+!docs/assets/**/*.jpg
+!docs/assets/**/*.jpeg
+!docs/assets/**/*.webp
+!docs/assets/**/*.gif
+
+# Model weights and inference/export artifacts
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+*.plan
+*.torchscript
+*.safetensors
+*.tflite
+*.pb
+*.mlmodel
+
+# Logs, caches, temporary files, and backups
+*.log
+*.log.*
+*.tmp
+*.temp
+*.cache
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+*.swp
+*.swo
+*~
+.cache/
+
+# IDE and editor state
+.idea/
+.vscode/
+*.code-workspace
+.project
+.classpath
+.settings/
+
+# Operating system metadata
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Local deployment handoff, incident records, and audit drafts may contain
+# server addresses, internal paths, task identifiers, or operational history.
+/docs/cloud-deployment-current-state.md
+/docs/incidents/
+/docs/superpowers/
+/docs/architecture.md
+/docs/current-status.md
+/docs/workflow-tutorial.md
+/docs/ui-guide.md
+/docs/*审计报告*.md
+/docs/*评估报告*.md
