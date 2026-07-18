@@ -41,7 +41,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate: (view: ViewK
   return <div className="platform-stack command-dashboard">
     <section className="command-hero">
       <div className="command-hero-main">
-        <div className="command-live"><span /><strong>YOLO Factory Control</strong><small>实时业务总览</small></div>
+        <div className="command-live"><span /><strong>TRAINFORGE CONTROL</strong><small>实时业务总览</small></div>
         <span className="command-eyebrow"><Sparkles size={14} />{action.stage} · 推荐下一步</span>
         <h2>{action.title}</h2>
         <p>{action.description}</p>

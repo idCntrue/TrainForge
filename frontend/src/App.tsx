@@ -276,10 +276,10 @@ function App() {
     <Layout className="app-shell">
       <Sider width={232} className="sidebar">
         <div className="brand">
-          <div className="brand-mark">YF</div>
+          <div className="brand-mark">TF</div>
           <div className="brand-copy">
-            <strong>YOLO Factory</strong>
-            <span>数据与模型工厂</span>
+            <strong>TrainForge</strong>
+            <span>模型工程平台</span>
           </div>
         </div>
         <Menu

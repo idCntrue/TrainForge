@@ -12,7 +12,7 @@ export default function HelpCenterPage() {
 
   return <div className="help-center">
     <header className="help-header">
-      <div><span className="help-eyebrow"><BookOpen size={15} /> 离线用户手册</span><h2>帮助中心</h2><p>从数据准备到云端部署的完整 YOLO Factory 操作手册。</p></div>
+      <div><span className="help-eyebrow"><BookOpen size={15} /> 离线用户手册</span><h2>帮助中心</h2><p>从数据准备到云端部署的完整 TrainForge 操作手册。</p></div>
       <Input allowClear prefix={<Search size={15} />} placeholder="搜索操作、错误或术语" value={query} onChange={(event) => setQuery(event.target.value)} />
     </header>
     <div className="help-layout">

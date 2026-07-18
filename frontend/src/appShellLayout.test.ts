@@ -3,6 +3,16 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('application shell layout', () => {
+  it('uses the public TrainForge brand in the application shell', () => {
+    const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
+    const dashboard = fs.readFileSync(path.resolve('src/pages/platform/DashboardPage.tsx'), 'utf8')
+
+    expect(source).toContain('<div className="brand-mark">TF</div>')
+    expect(source).toContain('<strong>TrainForge</strong>')
+    expect(source).not.toContain('<strong>YOLO Factory</strong>')
+    expect(dashboard).toContain('<strong>TRAINFORGE CONTROL</strong>')
+  })
+
   it('exposes the AGPL source repository to network users', () => {
     const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
 
