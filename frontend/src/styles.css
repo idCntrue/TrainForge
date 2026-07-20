@@ -117,6 +117,26 @@ button, input { font: inherit; }
 .metric-inline { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #e0e6e3; border-radius: 6px; overflow: hidden; }.metric-inline span { display: flex; flex-direction: column; gap: 3px; padding: 12px; color: #687570; font-size: 11px; border-right: 1px solid #e0e6e3; }.metric-inline span:last-child { border-right: 0; }.metric-inline strong { color: #18211f; font-size: 17px; }
 .log-panel { padding: 12px; background: #17221f; border-radius: 6px; color: #d8eee7; display: flex; flex-direction: column; gap: 7px; }.log-panel > div { display: flex; align-items: center; gap: 7px; margin-bottom: 3px; font-size: 12px; }.log-panel code { color: #b7c7c1; font-size: 11px; white-space: pre-wrap; }
 .gate-list { border: 1px solid #e0e6e3; border-radius: 6px; overflow: hidden; }.gate-row { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-bottom: 1px solid #e0e6e3; }.gate-row:last-child { border-bottom: 0; }.gate-row > div { display: flex; flex-direction: column; gap: 3px; }.gate-row span { color: #687570; font-size: 11px; }
+.model-gate-diagnostics { display: flex; flex-direction: column; gap: 12px; }
+.model-gate-loading { padding: 16px; border: 1px solid #e0e6e3; border-radius: 6px; }
+.model-gate-collapse { border-color: #d8dfdc; background: #fff; }
+.model-gate-heading { width: 100%; min-width: 0; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: start; gap: 9px; }
+.model-gate-heading > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.model-gate-heading strong { color: #18211f; font-size: 13px; }
+.model-gate-heading span { color: #687570; font-size: 11px; line-height: 1.5; }
+.gate-icon-passed { color: #2f855a; }.gate-icon-blocked { color: #c53b32; }
+.model-gate-detail { display: flex; flex-direction: column; gap: 10px; color: #586561; font-size: 12px; }
+.model-gate-detail > p,.model-gate-recommendation p { margin: 0; }
+.model-gate-sample { padding: 12px; border: 1px solid #e0e6e3; border-radius: 6px; background: #f8faf9; }
+.model-gate-sample-heading { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.model-gate-sample-heading strong { min-width: 0; overflow-wrap: anywhere; color: #18211f; }
+.model-gate-sample-heading span { flex: none; color: #687570; }
+.model-gate-sample ul { margin: 0; padding-left: 18px; color: #9f3029; }
+.model-gate-sample p { display: flex; align-items: flex-start; gap: 6px; margin: 9px 0 0; color: #687570; line-height: 1.6; }
+.model-gate-sample p svg { flex: none; margin-top: 2px; }
+.model-gate-recommendation { display: flex; flex-direction: column; gap: 7px; }
+.model-gate-progress { display: flex; flex-direction: column; gap: 2px; }
+.model-gate-progress > span { color: #7b8884; font-size: 11px; }
 .inference-workspace { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 16px; }.inference-controls { display: flex; flex-direction: column; gap: 18px; }.inference-controls .ant-form { margin-top: 18px; }
 .inference-preview { min-height: 440px; }.inference-empty,.inference-running { min-height: 330px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: #7b8884; }.inference-empty strong { color: #18211f; }
 .inference-result-list { min-width: 0; }
@@ -389,6 +409,12 @@ button, input { font: inherit; }
   .help-nav { display: flex; flex-direction: row; overflow-x: auto; }
   .help-nav button { min-width: 150px; }
   .help-document { padding: 20px 16px 42px; }
+  .model-gate-heading { grid-template-columns: 18px minmax(0, 1fr); }
+  .model-gate-heading .ant-tag { grid-column: 2; width: fit-content; margin: 2px 0 0; white-space: normal; }
+  .model-gate-sample-heading { flex-direction: column; gap: 4px; }
+  .model-gate-sample-heading span { flex: initial; }
+  .model-gate-collapse .ant-collapse-header { padding-inline: 10px !important; }
+  .model-gate-collapse .ant-collapse-content-box { padding-inline: 10px !important; }
   .ant-tabs-nav { margin-bottom: 12px; }
   .ant-tabs-nav-wrap { overflow-x: auto; }
 }
