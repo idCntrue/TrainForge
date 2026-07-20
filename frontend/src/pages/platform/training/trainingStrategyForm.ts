@@ -5,6 +5,10 @@ type PresetId = NonNullable<CreateTrainingRunInput['presetId']>
 const conservative = { mosaic: 0.5, mixup: 0, copy_paste: 0, degrees: 5, translate: 0.1, scale: 0.3, fliplr: 0, hsv_h: 0.01, hsv_s: 0.5, hsv_v: 0.3 }
 const standard = { mosaic: 1, mixup: 0, copy_paste: 0, degrees: 0, translate: 0.1, scale: 0.5, fliplr: 0.5, hsv_h: 0.015, hsv_s: 0.7, hsv_v: 0.4 }
 
+export function augmentationPatchForProfile(profile: 'conservative' | 'standard') {
+  return { ...(profile === 'conservative' ? conservative : standard) }
+}
+
 const presetValues = {
   smoke: { epochs: 10, imageSize: 320, patience: 5, optimizer: 'auto', closeMosaic: 2, augmentProfile: 'conservative', augmentation: conservative },
   'cpu-balanced': { epochs: 150, imageSize: 640, patience: 25, optimizer: 'auto', closeMosaic: 10, augmentProfile: 'conservative', augmentation: conservative },

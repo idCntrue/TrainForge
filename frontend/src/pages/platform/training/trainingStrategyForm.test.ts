@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isStrategyField, strategyPatchForPreset, validateCloseMosaic } from './trainingStrategyForm'
+import { augmentationPatchForProfile, isStrategyField, strategyPatchForPreset, validateCloseMosaic } from './trainingStrategyForm'
 import { trainingFormInitialValues } from './trainingFormDefaults'
 
 describe('training strategy form', () => {
@@ -29,5 +29,10 @@ describe('training strategy form', () => {
     expect(validateCloseMosaic(5, 6)).toBe('关闭 Mosaic 轮次不能大于总轮次')
     expect(validateCloseMosaic(5, 5)).toBeUndefined()
     expect(validateCloseMosaic(5, 0)).toBeUndefined()
+  })
+
+  it('maps enhancement profiles to visible augmentation parameters', () => {
+    expect(augmentationPatchForProfile('conservative')).toMatchObject({ mosaic: 0.5, degrees: 5, fliplr: 0 })
+    expect(augmentationPatchForProfile('standard')).toMatchObject({ mosaic: 1, degrees: 0, fliplr: 0.5 })
   })
 })

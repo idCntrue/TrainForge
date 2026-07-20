@@ -7,7 +7,7 @@ import type { TrainingStorageErrorDetail } from '../../../api'
 import type { CreateTrainingRunInput, TaskType } from '../../../platform/types'
 import { formatClassLabel } from '../../annotation/classLabels'
 import { buildConfirmationRows, moveWizardStep, trainingCreationSteps } from './trainingCreationWizard'
-import { isStrategyField, strategyPatchForPreset, validateCloseMosaic } from './trainingStrategyForm'
+import { augmentationPatchForProfile, isStrategyField, strategyPatchForPreset, validateCloseMosaic } from './trainingStrategyForm'
 import { cpuTrainingPolicy } from './trainingResourcePolicy'
 import { trainingFormInitialValues } from './trainingFormDefaults'
 
@@ -42,7 +42,7 @@ const modelPresets = {
 
 export function TrainingCreationWizardContent(props: ContentProps) {
   const policy = cpuTrainingPolicy(props.activeTask)
-  const values = Form.useWatch([], props.form) ?? props.form.getFieldsValue()
+  const epochs = Form.useWatch('epochs', { form: props.form, preserve: true }) ?? props.form.getFieldValue('epochs')
   const applyPreset = (presetId: PresetId) => {
     try {
       props.form.setFieldsValue(strategyPatchForPreset(presetId, props.activeTask, props.activeDevice, props.form.getFieldsValue()))
@@ -73,17 +73,20 @@ export function TrainingCreationWizardContent(props: ContentProps) {
           <Form.Item name="device" label="设备"><Select options={[{ value: 'cpu', label: 'CPU' }, { value: 'cuda:0', label: 'CUDA 0（GPU）' }]} /></Form.Item>
           <Form.Item name="patience" label="提前停止耐心值" extra="0 表示关闭提前停止；其他值表示指标连续多少轮未改善后停止。"><InputNumber min={0} max={300} /></Form.Item>
           <Form.Item name="optimizer" label="优化器"><Select options={['auto', 'SGD', 'Adam', 'AdamW'].map((value) => ({ value, label: value === 'auto' ? '自动选择' : value }))} /></Form.Item>
-          <Form.Item name="closeMosaic" label="关闭 Mosaic" dependencies={['epochs']} rules={[({ getFieldValue }) => ({ validator(_, value) { const error = validateCloseMosaic(getFieldValue('epochs'), value); return error ? Promise.reject(new Error(error)) : Promise.resolve() } })]}><InputNumber min={0} max={values.epochs ?? 1000} /></Form.Item>
+          <Form.Item name="closeMosaic" label="关闭 Mosaic" dependencies={['epochs']} rules={[({ getFieldValue }) => ({ validator(_, value) { const error = validateCloseMosaic(getFieldValue('epochs'), value); return error ? Promise.reject(new Error(error)) : Promise.resolve() } })]}><InputNumber min={0} max={epochs ?? 1000} /></Form.Item>
         </div>
       </>}
       {props.step === 2 && <>
         <Alert type="info" showIcon message="增强只影响训练，不会修改已发布数据集。" />
-        <Form.Item name="augmentProfile" label="增强策略"><Segmented options={[{ value: 'conservative', label: '保守' }, { value: 'standard', label: '标准' }]} /></Form.Item>
+        <Form.Item name="augmentProfile" label="增强策略"><Segmented onChange={(value) => { const profile = value as 'conservative' | 'standard'; props.form.setFieldsValue({ augmentProfile: profile, augmentation: augmentationPatchForProfile(profile) }) }} options={[{ value: 'conservative', label: '保守' }, { value: 'standard', label: '标准' }]} /></Form.Item>
         <div className="form-grid">{[
           ['mosaic', 'Mosaic', 0.1, 1], ['mixup', 'MixUp', 0.05, 1], ['copy_paste', 'Copy-Paste', 0.05, 1], ['degrees', '旋转角度', 1, 45], ['translate', '平移比例', 0.05, 0.5], ['scale', '缩放幅度', 0.05, 0.9], ['fliplr', '水平翻转概率', 0.1, 1], ['hsv_h', '色相扰动', 0.005, 0.1], ['hsv_s', '饱和度扰动', 0.05, 1], ['hsv_v', '明度扰动', 0.05, 1],
         ].map(([key, label, step, max]) => <Form.Item key={String(key)} name={['augmentation', key]} label={label}><InputNumber min={0} max={Number(max)} step={Number(step)} /></Form.Item>)}</div>
       </>}
-      {props.step === 3 && <section className="training-wizard-confirm"><h3>启动前确认</h3><p>创建后将加入训练队列。提前停止属于正常完成，候选模型使用 best.pt。</p><dl>{buildConfirmationRows(values).map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>}
+      {props.step === 3 && <Form.Item noStyle shouldUpdate>{({ getFieldsValue }) => {
+        const values = getFieldsValue(true) as Partial<CreateTrainingRunInput>
+        return <section className="training-wizard-confirm"><h3>启动前确认</h3><p>创建后将加入训练队列。提前停止属于正常完成，候选模型使用 best.pt。</p><dl>{buildConfirmationRows(values).map((row) => <div key={row.label}><dt>{row.label}</dt><dd>{row.value}</dd></div>)}</dl></section>
+      }}</Form.Item>}
     </div>
   </div>
 }

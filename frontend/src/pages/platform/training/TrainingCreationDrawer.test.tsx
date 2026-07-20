@@ -12,9 +12,9 @@ const props = {
   onWeightFileChange: () => undefined, onStorageFailureClose: () => undefined,
 }
 
-function Harness({ step }: { step: number }) {
+function Harness({ step, initialValues }: { step: number; initialValues?: Record<string, unknown> }) {
   const [form] = Form.useForm()
-  return <Form form={form}><TrainingCreationWizardContent {...props} form={form} step={step} /></Form>
+  return <Form form={form} initialValues={initialValues}><TrainingCreationWizardContent {...props} form={form} step={step} /></Form>
 }
 
 describe('TrainingCreationDrawer', () => {
@@ -36,5 +36,12 @@ describe('TrainingCreationDrawer', () => {
     const html = renderToStaticMarkup(<Harness step={3} />)
     expect(html).toContain('training-wizard-body')
     expect(html).toContain('启动前确认')
+  })
+
+  it('summarizes preserved values from fields that are no longer mounted', () => {
+    const html = renderToStaticMarkup(<Harness step={3} initialValues={{ name: '已填写训练', task: 'segment', datasetReleaseId: 'release-1', baseModel: 'yolo11n-seg.pt', epochs: 150, batch: 1, imageSize: 640, device: 'cpu', patience: 25, optimizer: 'AdamW', closeMosaic: 10 }} />)
+    expect(html).toContain('已填写训练')
+    expect(html).toContain('release-1')
+    expect(html).toContain('AdamW')
   })
 })
