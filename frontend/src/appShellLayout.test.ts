@@ -27,6 +27,12 @@ describe('application shell layout', () => {
     expect(css).toContain('.content { flex: 1; min-height: 0;')
   })
 
+  it('keeps the training wizard form height bounded so the active step can scroll', () => {
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+    expect(css).toContain('.training-creation-drawer .ant-drawer-body > .ant-form { height: 100%; min-height: 0; }')
+    expect(css).toContain('.training-wizard-step-content { flex: 1; min-height: 0; overflow-y: auto;')
+  })
+
   it('uses a safe-area-aware fixed mobile navigation instead of a narrow desktop sidebar', () => {
     const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
