@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Form } from 'antd'
 import { describe, expect, it } from 'vitest'
-import { TrainingCreationWizardContent } from './TrainingCreationDrawer'
+import { collectTrainingFormValues, TrainingCreationWizardContent } from './TrainingCreationDrawer'
 
 const props = {
   releases: [{ id: 'release-1', label: '数据集 A' }],
@@ -18,6 +18,12 @@ function Harness({ step, initialValues }: { step: number; initialValues?: Record
 }
 
 describe('TrainingCreationDrawer', () => {
+  it('submits the complete preserved form store after validation', async () => {
+    const complete = { name: 'run', task: 'segment', datasetReleaseId: 'release-1' }
+    const form = { validateFields: async () => ({ optimizer: 'auto' }), getFieldsValue: (all?: boolean) => all ? complete : {} }
+    await expect(collectTrainingFormValues(form as never)).resolves.toEqual(complete)
+  })
+
   it('renders the four-step navigation and only the active basic fields', () => {
     const html = renderToStaticMarkup(<Harness step={0} />)
     for (const label of ['基础设置', '训练策略', '数据增强', '确认启动']) expect(html).toContain(label)

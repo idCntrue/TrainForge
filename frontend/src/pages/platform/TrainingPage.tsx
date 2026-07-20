@@ -91,9 +91,8 @@ export default function TrainingPage() {
       .finally(() => setDetailsLoading(false))
   }, [selected?.id, selected?.epoch, selected?.status, selected?.progress])
 
-  const createRun = async () => {
+  const createRun = async (values: CreateTrainingRunInput) => {
     try {
-      const values = await form.validateFields()
       if (useCustomWeight && !customWeightFile) return message.warning('请选择一个 .pt 权重文件')
       const created = useCustomWeight && customWeightFile
         ? mapTrainingRun(await api.createTrainingRunWithWeight({
@@ -251,7 +250,7 @@ export default function TrainingPage() {
       onWeightFileChange={setCustomWeightFile}
       onStorageFailureClose={() => setStorageFailure(undefined)}
       onClose={closeCreateDrawer}
-      onSubmit={() => void createRun()}
+      onSubmit={(values) => void createRun(values)}
     />
     <Drawer className="mobile-fullscreen-drawer" width={isMobile ? '100%' : 'min(1080px, 94vw)'} title={selected?.name} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && <Space>{selected.status === 'completed' && <Button type="primary" icon={<Box size={15} />} onClick={() => { setRegisterRun(selected); modelForm.setFieldsValue({ name: selected.name, version: '1.0.0' }) }}>注册候选模型</Button>}{['queued','running'].includes(selected.status) ? <Button danger icon={<Square size={15} />} onClick={() => void cancelRun(selected)}>停止</Button> : <Dropdown trigger={['click']} menu={{ items:[{key:'record',label:'仅删除训练记录'},{key:'artifacts',label:'删除记录并清理训练产物',danger:true},{key:'cascade',label:'级联删除全部下游数据',danger:true}],onClick:({key})=>deleteRun(selected,key!=='record',key==='cascade') }}><Button icon={<MoreHorizontal size={15}/>}>删除与清理</Button></Dropdown>}</Space>}>
       {selected && <div className="training-detail-drawer"><div className="detail-status"><TaskTag task={selected.task} /><StatusTag status={selected.status} /><span>{selected.duration}</span><strong>Epoch {selected.epoch}/{selected.epochs}</strong></div>

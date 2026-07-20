@@ -97,7 +97,12 @@ interface DrawerProps extends Omit<ContentProps, 'step' | 'form'> {
   mobile: boolean
   submitting?: boolean
   onClose: () => void
-  onSubmit: () => void
+  onSubmit: (values: CreateTrainingRunInput) => void
+}
+
+export async function collectTrainingFormValues(form: FormInstance<CreateTrainingRunInput>): Promise<CreateTrainingRunInput> {
+  await form.validateFields()
+  return form.getFieldsValue(true) as CreateTrainingRunInput
 }
 
 export function TrainingCreationDrawer(props: DrawerProps) {
@@ -107,7 +112,8 @@ export function TrainingCreationDrawer(props: DrawerProps) {
     await props.form.validateFields([...trainingCreationSteps[step].fields])
     setStep((current) => moveWizardStep(current, 1))
   }
-  return <Drawer className="training-creation-drawer mobile-fullscreen-drawer" width={props.mobile ? '100%' : 720} title="创建训练" open={props.open} onClose={props.onClose} footer={<div className="training-wizard-footer"><Button disabled={step === 0} onClick={() => setStep((current) => moveWizardStep(current, -1))}>上一步</Button><Space>{step < 3 ? <Button type="primary" onClick={() => void next()}>下一步</Button> : <Button type="primary" loading={props.submitting} onClick={props.onSubmit}>加入队列</Button>}</Space></div>}>
+  const submit = async () => props.onSubmit(await collectTrainingFormValues(props.form))
+  return <Drawer className="training-creation-drawer mobile-fullscreen-drawer" width={props.mobile ? '100%' : 720} title="创建训练" open={props.open} onClose={props.onClose} footer={<div className="training-wizard-footer"><Button disabled={step === 0} onClick={() => setStep((current) => moveWizardStep(current, -1))}>上一步</Button><Space>{step < 3 ? <Button type="primary" onClick={() => void next()}>下一步</Button> : <Button type="primary" loading={props.submitting} onClick={() => void submit()}>加入队列</Button>}</Space></div>}>
     <Form form={props.form} layout="vertical" initialValues={trainingFormInitialValues} onValuesChange={(changed) => { const root = Object.keys(changed)[0]; if (root && root !== 'presetId' && isStrategyField([root]) && props.form.getFieldValue('presetId') !== 'custom') props.form.setFieldValue('presetId', 'custom') }}>
       <TrainingCreationWizardContent {...props} step={step} />
     </Form>
