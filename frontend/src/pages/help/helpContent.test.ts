@@ -5,9 +5,16 @@ import { helpChapters, searchHelp } from './helpContent'
 describe('offline help content', () => {
   it('covers the full product manual structure', () => {
     expect(helpChapters.map((chapter) => chapter.id)).toEqual([
-      'quick-start', 'workflow', 'pages', 'models', 'data', 'troubleshooting', 'deployment', 'training-quality', 'glossary',
+      'quick-start', 'workflow', 'native-annotation', 'pages', 'models', 'data', 'troubleshooting', 'deployment', 'training-quality', 'glossary',
     ])
   })
+
+  it.each(['原生标注', '修改类别', 'SAM2', '追加图片', '审核通过'])(
+    'documents native annotation topic: %s',
+    (keyword) => {
+      expect(searchHelp(keyword).map((chapter) => chapter.id)).toContain('native-annotation')
+    },
+  )
 
   it.each(['安全重试', '独立测试', '证据不足'])('documents training quality topic: %s', (keyword) => {
     expect(searchHelp(keyword).map((chapter) => chapter.id)).toContain('training-quality')

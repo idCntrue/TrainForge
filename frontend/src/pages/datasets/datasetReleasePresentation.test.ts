@@ -42,7 +42,7 @@ describe('dataset release presentation', () => {
   })
 
   it('keeps long dataset labels readable in the training dropdown', () => {
-    const source = fs.readFileSync(path.resolve('src/pages/platform/TrainingPage.tsx'), 'utf8')
+    const source = fs.readFileSync(path.resolve('src/pages/platform/training/TrainingCreationDrawer.tsx'), 'utf8')
 
     expect(source).toContain('popupMatchSelectWidth={520}')
   })

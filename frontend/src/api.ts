@@ -233,7 +233,8 @@ export interface TrainingArtifactApiResponse {
 
 export interface TrainingRunDetailsApiResponse {
   run_id: string
-  configuration: { name: string; task_type: string; dataset_release_id: string; base_model: string; epochs: number; batch: number; image_size: number; device: string; selected_classes: string[]; class_aliases: Record<string, string> }
+  configuration: { name: string; task_type: string; dataset_release_id: string; base_model: string; epochs: number; batch: number; image_size: number; device: string; selected_classes: string[]; class_aliases: Record<string, string>; preset_id?: string; patience?: number; optimizer?: string; close_mosaic?: number; augment_profile?: string; augmentation?: TrainingAugmentationOptions }
+  completion?: { requested_epochs: number; completed_epochs: number | null; best_epoch: number | null; stopped_early: boolean | null }
   timing: { epoch_seconds: number | null; eta_seconds: number | null }
   split_distribution: { requested_ratios: Record<string, number> | null; actual_ratios: Record<string, number>; split_counts: Record<string, number>; split_seed: number | null; grouping_strategy: string | null }
   epoch_history: TrainingEpochMetrics[]
@@ -592,6 +593,12 @@ export const api = {
     form.append('device', input.device)
     form.append('selected_classes', JSON.stringify(input.selected_classes))
     form.append('class_aliases', JSON.stringify(input.class_aliases))
+    if (input.preset_id !== undefined) form.append('preset_id', input.preset_id)
+    if (input.patience !== undefined) form.append('patience', String(input.patience))
+    if (input.optimizer !== undefined) form.append('optimizer', input.optimizer)
+    if (input.close_mosaic !== undefined) form.append('close_mosaic', String(input.close_mosaic))
+    if (input.augment_profile !== undefined) form.append('augment_profile', input.augment_profile)
+    if (input.augmentation !== undefined) form.append('augmentation', JSON.stringify(input.augmentation))
     form.append('base_model_file', file)
     return postFormWithProgress<TrainingRunApiResponse>('/training-runs/upload', form, onProgress)
   },

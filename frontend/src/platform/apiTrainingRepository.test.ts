@@ -90,11 +90,16 @@ describe('API training repository', () => {
     await repository.createTrainingRun({
       name: 'custom', task: 'detect', datasetReleaseId: 'release-1', baseModel: 'yolo11n.pt',
       epochs: 100, batch: 2, imageSize: 640, device: 'cpu', presetId: 'custom',
+      patience: 30, optimizer: 'AdamW', closeMosaic: 12, augmentProfile: 'standard',
       augmentation: { mosaic: 0.8, mixup: 0.1 },
     })
 
     expect(client.createTrainingRun).toHaveBeenCalledWith(expect.objectContaining({
       preset_id: 'custom',
+      patience: 30,
+      optimizer: 'AdamW',
+      close_mosaic: 12,
+      augment_profile: 'standard',
       augmentation: { mosaic: 0.8, mixup: 0.1 },
     }))
   })

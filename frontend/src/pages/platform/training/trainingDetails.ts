@@ -28,6 +28,15 @@ export function metricText(value: number | null | undefined) {
   return value == null ? '待生成' : value.toFixed(4)
 }
 
+export function earlyStopSummary(completion: { requested_epochs: number; completed_epochs: number | null; best_epoch: number | null; stopped_early: boolean | null } | undefined, patience: number | undefined) {
+  if (!completion) return '历史运行未记录提前停止详情。'
+  if (completion.stopped_early && completion.completed_epochs != null && completion.best_epoch != null && patience != null) {
+    return `最佳轮次 ${completion.best_epoch}，连续 ${patience} 轮未改善，于第 ${completion.completed_epochs} 轮提前停止。训练正常完成，候选模型使用 best.pt。`
+  }
+  if (completion.completed_epochs != null) return `已完成 ${completion.completed_epochs} / ${completion.requested_epochs} 轮，候选模型使用 best.pt。`
+  return '完成轮次尚未记录。'
+}
+
 const labels: Record<string, string> = {
   best_pt: '最佳权重 best.pt', last_pt: '最终权重 last.pt', results: '训练结果总览',
   results_csv: '逐轮指标 CSV', runner_log: '完整运行日志', run_manifest: '训练清单',

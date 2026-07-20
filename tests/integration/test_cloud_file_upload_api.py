@@ -121,6 +121,11 @@ def test_uploads_custom_training_weight_into_storage(tmp_path: Path) -> None:
     payload.pop("base_model")
     payload["selected_classes"] = json.dumps([])
     payload["class_aliases"] = json.dumps({})
+    payload.update({
+        "preset_id": "custom", "patience": 0, "optimizer": "AdamW",
+        "close_mosaic": 2, "augment_profile": "standard",
+        "augmentation": json.dumps({"mosaic": 0.8, "mixup": 0.1}),
+    })
     with TestClient(create_app(storage_root=storage, training_engine="simulation", training_step_seconds=0.2)) as client:
         response = client.post(
             "/api/training-runs/upload",
@@ -133,6 +138,10 @@ def test_uploads_custom_training_weight_into_storage(tmp_path: Path) -> None:
             deleted = client.delete(f"/api/training-runs/{response.json()['id']}", params={"delete_artifacts": True})
 
     assert response.status_code == 201
+    assert response.json()["patience"] == 0
+    assert response.json()["optimizer"] == "AdamW"
+    assert response.json()["close_mosaic"] == 2
+    assert response.json()["augmentation"]["mosaic"] == 0.8
     assert deleted.status_code == 204
     assert not model_path.exists()
     assert model_path.is_relative_to(storage)

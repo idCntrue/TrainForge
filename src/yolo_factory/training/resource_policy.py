@@ -141,7 +141,7 @@ class TrainingResourcePolicy:
     def execution_policy(self, device: str) -> TrainingExecutionPolicy:
         if device.lower().startswith("cpu"):
             return TrainingExecutionPolicy(workers=0, cache=False, cpu_threads=self.cpu_threads)
-        return TrainingExecutionPolicy(workers=2, cache=False, cpu_threads=None)
+        return TrainingExecutionPolicy(workers=0, cache=False, cpu_threads=None)
 
     def validate_free_disk(
         self,

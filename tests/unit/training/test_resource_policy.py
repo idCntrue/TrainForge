@@ -88,7 +88,7 @@ def test_builds_bounded_execution_policy() -> None:
     gpu = policy.execution_policy("cuda:0")
 
     assert cpu.model_dump() == {"workers": 0, "cache": False, "cpu_threads": 3}
-    assert gpu.model_dump() == {"workers": 2, "cache": False, "cpu_threads": None}
+    assert gpu.model_dump() == {"workers": 0, "cache": False, "cpu_threads": None}
 
 
 def test_rejects_disk_when_either_absolute_or_percentage_reserve_is_too_low(tmp_path) -> None:

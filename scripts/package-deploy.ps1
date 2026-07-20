@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = "Stop"
 $SourceRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $SourceParent = Split-Path $SourceRoot -Parent
-$ProjectName = Split-Path $SourceRoot -Leaf
+$ProjectName = "yolo_model_factory"
 
 if (-not $OutputPath) {
     $OutputPath = Join-Path $SourceParent "yolo-model-factory-deploy.tar.gz"
@@ -35,6 +35,7 @@ $excludedDirectories = @(
 )
 
 $excludedFiles = @(
+    ".git",
     ".env",
     "*.db",
     "*.sqlite",

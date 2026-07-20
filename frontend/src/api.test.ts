@@ -340,11 +340,19 @@ describe('cloud file upload requests', () => {
     await api.createTrainingRunWithWeight({
       name: 'custom', task_type: 'detect', dataset_release_id: 'dataset-1', base_model: '',
       epochs: 10, batch: 2, image_size: 640, device: 'cpu', selected_classes: ['light'], class_aliases: {},
+      preset_id: 'custom', patience: 0, optimizer: 'AdamW', close_mosaic: 4, augment_profile: 'standard',
+      augmentation: { mosaic: 0.8, mixup: 0.1 },
     }, file)
 
     const request = FakeXMLHttpRequest.instance
     expect(request.url).toBe('/api/training-runs/upload')
     expect(request.body?.get('selected_classes')).toBe('["light"]')
+    expect(request.body?.get('preset_id')).toBe('custom')
+    expect(request.body?.get('patience')).toBe('0')
+    expect(request.body?.get('optimizer')).toBe('AdamW')
+    expect(request.body?.get('close_mosaic')).toBe('4')
+    expect(request.body?.get('augment_profile')).toBe('standard')
+    expect(request.body?.get('augmentation')).toBe('{"mosaic":0.8,"mixup":0.1}')
     expect(request.body?.get('base_model_file')).toBe(file)
   })
 })

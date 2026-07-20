@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { artifactLabel, epochProgressText, formatDuration, metricText, timingText } from './trainingDetails'
+import { artifactLabel, earlyStopSummary, epochProgressText, formatDuration, metricText, timingText } from './trainingDetails'
 
 describe('training detail presentation', () => {
   it('formats timing and missing metrics explicitly', () => {
@@ -24,5 +24,11 @@ describe('training detail presentation', () => {
   it('only shows calculating timing for active runs', () => {
     expect(timingText('running', null, 'epoch')).toBe('计算中')
     expect(timingText('failed', null, 'eta')).toBe('已结束')
+  })
+
+  it('explains completed early stopping and supports historical details', () => {
+    expect(earlyStopSummary({ requested_epochs: 150, completed_epochs: 70, best_epoch: 49, stopped_early: true }, 20))
+      .toBe('最佳轮次 49，连续 20 轮未改善，于第 70 轮提前停止。训练正常完成，候选模型使用 best.pt。')
+    expect(earlyStopSummary(undefined, 20)).toBe('历史运行未记录提前停止详情。')
   })
 })
