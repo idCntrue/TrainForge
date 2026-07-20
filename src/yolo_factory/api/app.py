@@ -836,6 +836,12 @@ def create_app(
         device: str = Form(...),
         selected_classes: str = Form("[]"),
         class_aliases: str = Form("{}"),
+        preset_id: str = Form("custom"),
+        patience: int = Form(20),
+        optimizer: str = Form("auto"),
+        close_mosaic: int = Form(10),
+        augment_profile: str = Form("standard"),
+        augmentation: str = Form("{}"),
         base_model_file: UploadFile = File(...),
     ) -> TrainingRunResponse:
         filename = safe_upload_name(base_model_file, {".pt"}, "model weight")
@@ -847,7 +853,8 @@ def create_app(
             try:
                 parsed_classes = json.loads(selected_classes)
                 parsed_aliases = json.loads(class_aliases)
-                if not isinstance(parsed_classes, list) or not isinstance(parsed_aliases, dict):
+                parsed_augmentation = json.loads(augmentation)
+                if not isinstance(parsed_classes, list) or not isinstance(parsed_aliases, dict) or not isinstance(parsed_augmentation, dict):
                     raise ValueError
             except (json.JSONDecodeError, ValueError) as exc:
                 raise HTTPException(status_code=422, detail="selected_classes or class_aliases is invalid JSON") from exc
@@ -862,6 +869,12 @@ def create_app(
                 device=device,
                 selected_classes=parsed_classes,
                 class_aliases=parsed_aliases,
+                preset_id=preset_id,
+                patience=patience,
+                optimizer=optimizer,
+                close_mosaic=close_mosaic,
+                augment_profile=augment_profile,
+                augmentation=parsed_augmentation,
             )
             try:
                 with heavy_operation_guard.acquire("training-start"):

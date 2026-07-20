@@ -108,6 +108,7 @@ def build_training_details(run: TrainingRun, storage_root: Path, registry: Regis
     if run_directory and (run_directory / "runner.log").is_file():
         logs = (run_directory / "runner.log").read_text(encoding="utf-8", errors="replace").splitlines()[-200:]
     latest_event = events[-1] if events else {}
+    quality_report = None
     failure_diagnostic = None
     recovery_options = None
     if run.status == "failed" and run_directory:
@@ -179,6 +180,15 @@ def build_training_details(run: TrainingRun, storage_root: Path, registry: Regis
             return json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             return None
+    quality_report = load_report("quality-report.json")
+    completed_epochs = latest_event.get("completed_epochs", latest_event.get("epoch", run.epoch))
+    requested_epochs = run.spec.epochs
+    best_epoch = latest_event.get("best_epoch")
+    if best_epoch is None and quality_report:
+        best_epoch = quality_report.get("best_epoch")
+    stopped_early = latest_event.get("stopped_early")
+    if stopped_early is None and run.status == "completed" and completed_epochs is not None:
+        stopped_early = int(completed_epochs) < int(requested_epochs)
     return {
         "run_id": run.id,
         "configuration": {
@@ -186,6 +196,15 @@ def build_training_details(run: TrainingRun, storage_root: Path, registry: Regis
             "base_model": run.spec.base_model, "epochs": run.spec.epochs, "batch": run.spec.batch,
             "image_size": run.spec.image_size, "device": run.spec.device,
             "selected_classes": list(run.spec.selected_classes), "class_aliases": run.spec.class_aliases,
+            "preset_id": run.spec.preset_id, "patience": run.spec.patience,
+            "optimizer": run.spec.optimizer, "close_mosaic": run.spec.close_mosaic,
+            "augment_profile": run.spec.augment_profile, "augmentation": run.spec.augmentation,
+        },
+        "completion": {
+            "requested_epochs": requested_epochs,
+            "completed_epochs": completed_epochs,
+            "best_epoch": best_epoch,
+            "stopped_early": stopped_early,
         },
         "timing": {"epoch_seconds": latest_event.get("epoch_seconds"), "eta_seconds": latest_event.get("eta_seconds")},
         "split_distribution": split_distribution,
@@ -206,7 +225,7 @@ def build_training_details(run: TrainingRun, storage_root: Path, registry: Regis
         ],
         "dataset_quality": load_report("dataset-quality.json"),
         "test_metrics": load_report("test-metrics.json"),
-        "quality_report": load_report("quality-report.json"),
+        "quality_report": quality_report,
         "artifacts": _catalog(run_directory, storage_root) if run_directory else [],
         "logs": logs,
         "warnings": [] if history_by_epoch else ["暂未生成逐轮指标"],

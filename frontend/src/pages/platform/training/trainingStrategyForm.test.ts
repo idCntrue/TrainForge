@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isStrategyField, strategyPatchForPreset, validateCloseMosaic } from './trainingStrategyForm'
+import { trainingFormInitialValues } from './trainingFormDefaults'
 
 describe('training strategy form', () => {
   it('matches the server presets and chooses a resource-safe batch', () => {
@@ -7,6 +8,10 @@ describe('training strategy form', () => {
     expect(strategyPatchForPreset('cpu-balanced', 'detect', 'cpu').batch).toBe(2)
     expect(strategyPatchForPreset('cpu-balanced', 'segment', 'cpu').batch).toBe(1)
     expect(strategyPatchForPreset('gpu-quality', 'segment', '0')).toMatchObject({ epochs: 200, batch: 8, imageSize: 640, patience: 30, closeMosaic: 10, augmentProfile: 'standard' })
+  })
+
+  it('starts with values matching the CPU balanced preset', () => {
+    expect(trainingFormInitialValues).toMatchObject(strategyPatchForPreset('cpu-balanced', 'detect', 'cpu'))
   })
 
   it('rejects the GPU quality preset on CPU', () => {

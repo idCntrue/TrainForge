@@ -233,7 +233,8 @@ export interface TrainingArtifactApiResponse {
 
 export interface TrainingRunDetailsApiResponse {
   run_id: string
-  configuration: { name: string; task_type: string; dataset_release_id: string; base_model: string; epochs: number; batch: number; image_size: number; device: string; selected_classes: string[]; class_aliases: Record<string, string> }
+  configuration: { name: string; task_type: string; dataset_release_id: string; base_model: string; epochs: number; batch: number; image_size: number; device: string; selected_classes: string[]; class_aliases: Record<string, string>; preset_id?: string; patience?: number; optimizer?: string; close_mosaic?: number; augment_profile?: string; augmentation?: TrainingAugmentationOptions }
+  completion?: { requested_epochs: number; completed_epochs: number | null; best_epoch: number | null; stopped_early: boolean | null }
   timing: { epoch_seconds: number | null; eta_seconds: number | null }
   split_distribution: { requested_ratios: Record<string, number> | null; actual_ratios: Record<string, number>; split_counts: Record<string, number>; split_seed: number | null; grouping_strategy: string | null }
   epoch_history: TrainingEpochMetrics[]

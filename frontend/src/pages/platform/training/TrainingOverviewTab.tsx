@@ -2,7 +2,7 @@ import { Alert, Card, Descriptions, Progress, Tag, Tooltip } from 'antd'
 import { CircleHelp, TrendingDown, TrendingUp, Minus } from 'lucide-react'
 import type { TrainingRunDetailsApiResponse } from '../../../api'
 import type { TrainingRun } from '../../../platform/types'
-import { epochProgressText, metricText, timingText } from './trainingDetails'
+import { earlyStopSummary, epochProgressText, metricText, timingText } from './trainingDetails'
 import { lossTrend, splitPresentation } from './trainingDashboardPresentation'
 import { TrainingFailurePanel } from './TrainingFailurePanel'
 import { TrainingQualitySummary } from './TrainingQualitySummary'
@@ -40,6 +40,7 @@ export function TrainingOverviewTab({ run, details, recoveryPending = false, onS
       onEvaluateBest={onEvaluateBest}
     />}
     {run.status === 'completed' && details.quality_report && <TrainingQualitySummary report={details.quality_report} metrics={details.test_metrics} />}
+    {run.status === 'completed' && <Alert type={details.completion?.stopped_early ? 'success' : 'info'} showIcon message={details.completion?.stopped_early ? '训练已正常提前停止' : '训练已完成'} description={earlyStopSummary(details.completion, details.configuration.patience)} />}
     {details.dataset_quality && <TrainingEvidencePanel report={details.dataset_quality} />}
 
     <Card className="training-progress-card" size="small">
@@ -87,6 +88,7 @@ export function TrainingOverviewTab({ run, details, recoveryPending = false, onS
       { key: 'size', label: '输入尺寸', children: `${details.configuration.image_size} px` },
       { key: 'dataset', label: '数据集版本', children: details.configuration.dataset_release_id },
       { key: 'classes', label: '训练类别', children: details.configuration.selected_classes.join('、') || '全部类别' },
+      { key: 'patience', label: '提前停止', children: details.configuration.patience === 0 ? '已关闭' : details.configuration.patience != null ? `${details.configuration.patience} 轮` : '历史版本未记录' },
     ]} />
     {details.warnings.map((warning) => <Alert key={warning} type="info" showIcon message={warning} />)}
   </div>

@@ -25,6 +25,11 @@ export function TrainingArtifactsTab({ details }: { details: TrainingRunDetailsA
       { key: 'classes', label: '训练类别', span: 2, children: details.configuration.selected_classes.join('、') || '全部类别' },
       { key: 'seed', label: '划分随机种子', children: distribution.split_seed ?? '-' },
       { key: 'group', label: '划分策略', children: distribution.grouping_strategy ?? '历史版本' },
+      { key: 'preset', label: '训练方案', children: details.configuration.preset_id ?? '历史版本未记录' },
+      { key: 'optimizer', label: '优化器', children: details.configuration.optimizer ?? '历史版本未记录' },
+      { key: 'patience', label: '提前停止耐心值', children: details.configuration.patience === 0 ? '已关闭' : details.configuration.patience != null ? `${details.configuration.patience} 轮` : '历史版本未记录' },
+      { key: 'close-mosaic', label: '关闭 Mosaic', children: details.configuration.close_mosaic != null ? `最后 ${details.configuration.close_mosaic} 轮` : '历史版本未记录' },
+      { key: 'augment', label: '数据增强', children: details.configuration.augment_profile ?? '历史版本未记录' },
     ]} />
 
     <section className="training-artifact-section">

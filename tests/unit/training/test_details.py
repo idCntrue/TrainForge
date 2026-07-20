@@ -20,6 +20,7 @@ def test_builds_epoch_history_split_distribution_and_allowlisted_artifacts(tmp_p
     (output / "weights" / "best.pt").write_bytes(b"weights")
     (output / "secret.bin").write_bytes(b"secret")
     (run_dir / "runner.log").write_text("line-1\nline-2\n", encoding="utf-8")
+    (run_dir / "progress.jsonl").write_text(json.dumps({"epoch": 7, "total_epochs": 10, "best_epoch": 4, "stopped_early": True}) + "\n", encoding="utf-8")
     release_path = storage / "dataset-releases" / "task" / "dataset-v1.0.0"
     release_path.mkdir(parents=True)
     (release_path / "manifest.yaml").write_text(yaml.safe_dump({"requested_ratios": {"train": 70, "val": 20, "test": 10}, "actual_ratios": {"train": 70.0, "val": 20.0, "test": 10.0}, "split_counts": {"train": 7, "val": 2, "test": 1}}), encoding="utf-8")
@@ -31,7 +32,7 @@ def test_builds_epoch_history_split_distribution_and_allowlisted_artifacts(tmp_p
     with session_scope(registry) as session:
         session.add(DatasetRelease(id="release", task_id="task", annotation_export_id="export", version="1.0.0", release_path=release_path.relative_to(storage).as_posix(), status="published"))
     now = datetime.now(timezone.utc)
-    run = TrainingRun(id="run-1", spec=TrainingRunSpec(name="run", task_type="detect", dataset_release_id="release", base_model="yolo11n.pt", epochs=10, batch=2, image_size=640, device="cuda:0"), status="running", progress=10, phase="training", message="Epoch 1", pid=None, run_directory=str(run_dir), heartbeat_at=None, created_at=now, updated_at=now, finished_at=None, exit_code=None, cancel_requested_at=None)
+    run = TrainingRun(id="run-1", spec=TrainingRunSpec(name="run", task_type="detect", dataset_release_id="release", base_model="yolo11n.pt", epochs=10, batch=2, image_size=640, device="cuda:0", preset_id="custom", patience=3, optimizer="AdamW", close_mosaic=2, augment_profile="standard"), status="completed", progress=100, phase="completed", message="done", pid=None, run_directory=str(run_dir), heartbeat_at=None, created_at=now, updated_at=now, finished_at=now, exit_code=0, cancel_requested_at=None, epoch=7, total_epochs=10)
 
     details = build_training_details(run, storage, registry)
 
@@ -39,6 +40,11 @@ def test_builds_epoch_history_split_distribution_and_allowlisted_artifacts(tmp_p
     assert details["split_distribution"]["split_counts"] == {"train": 7, "val": 2, "test": 1}
     assert {item["key"] for item in details["artifacts"]} == {"results", "best_pt", "runner_log", "results_csv"}
     assert details["logs"] == ["line-1", "line-2"]
+    assert details["configuration"] | {
+        "preset_id": "custom", "patience": 3, "optimizer": "AdamW", "close_mosaic": 2,
+        "augment_profile": "standard",
+    } == details["configuration"]
+    assert details["completion"] == {"requested_epochs": 10, "completed_epochs": 7, "best_epoch": 4, "stopped_early": True}
 
 
 def test_returns_persisted_failure_diagnostic_and_recovery_options(tmp_path: Path) -> None:
