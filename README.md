@@ -271,6 +271,26 @@ Windows 发布者可使用受测脚本生成不包含数据库、权重、日志
 
 脚本会输出完整路径、文件大小和 SHA-256，并验证 `registry`、`models`、API、Compose 与更新脚本均已纳入归档。
 
+### 云端数据同步到 Windows
+
+在 Windows PowerShell 中使用一条命令创建云端 SQLite 在线副本，并同步标注与新训练所需的数据：
+
+```powershell
+./scripts/sync-cloud-data.ps1 -RemoteHost user@example-host
+```
+
+默认同步 `frame-batches`、`dataset-releases`、`task-configs` 和数据库副本。脚本会在本地保留旧数据库备份，将 Linux `/data` 路径迁移到本地存储根，验证 SQLite 后才替换本地数据库。云端正式 `factory.db` 始终只读。
+
+```powershell
+# 同时复制基础权重/模型
+./scripts/sync-cloud-data.ps1 -RemoteHost user@example-host -IncludeModels
+
+# 额外复制原始视频和历史训练目录
+./scripts/sync-cloud-data.ps1 -RemoteHost user@example-host -IncludeRawVideos -IncludeTrainingRuns
+```
+
+首次执行可先加 `-DryRun` 检查本地工具和选项，不连接或修改任何数据。SSH 可使用密码交互或现有密钥；仓库不保存服务器地址和凭据。
+
 历史存储根路径迁移默认只生成预览报告；确认 `external_paths` 和 `missing_paths` 后，才可增加 `--apply` 写入数据库：
 
 ```bash

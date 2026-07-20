@@ -28,6 +28,13 @@
 
 发布包只能精确排除仓库根目录下的运行数据目录。不得按目录名全局排除 `registry` 或 `models`，因为 `src/yolo_factory/registry` 与 `src/yolo_factory/models` 是 API 必需的 Python 源码包。完整包必须同时通过禁止运行数据扫描和 Python 包目录完整性检查。
 
+### 云端到本地数据副本
+
+- `scripts/sync-cloud-data.ps1` 默认复制 SQLite 在线备份、帧批次、已发布数据集和持久任务配置。
+- 云端操作只读取正式 `factory.db`，只可替换临时 `factory.local-copy.db`；不停止云端 API，不删除云端业务目录。
+- 本地候选库经完整性检查和路径迁移后才替换 `factory.db`；旧本地库使用时间戳备份保留。
+- 模型、原始视频和历史训练目录默认不复制，可使用显式参数增加；未选中的历史路径缺失只警告，不阻断新训练所需数据。
+
 ## 训练资源保护
 
 - CPU 检测默认 Batch 2、上限 4；CPU 分割默认 Batch 1、上限 1；CPU 训练 worker 为 0，数据缓存关闭。

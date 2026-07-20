@@ -271,6 +271,23 @@ Windows maintainers can generate a verified update archive that excludes databas
 
 The script prints the archive path, size, and SHA-256 and verifies that the `registry`, `models`, API, Compose, and update-script sources are present.
 
+### Cloud data sync to Windows
+
+Create an online cloud SQLite copy and synchronize the data required for annotation and new training runs with one PowerShell command:
+
+```powershell
+./scripts/sync-cloud-data.ps1 -RemoteHost user@example-host
+```
+
+The default mode synchronizes the database copy, `frame-batches`, `dataset-releases`, and `task-configs`. It retains a timestamped local database backup, migrates Linux `/data` paths to the local storage root, and replaces the local database only after SQLite verification. The production cloud `factory.db` remains read-only.
+
+```powershell
+./scripts/sync-cloud-data.ps1 -RemoteHost user@example-host -IncludeModels
+./scripts/sync-cloud-data.ps1 -RemoteHost user@example-host -IncludeRawVideos -IncludeTrainingRuns
+```
+
+Use `-DryRun` first to validate local tools and options without connecting to or changing data. SSH authentication uses an interactive password or the operator's existing key; no server address or credential is stored in the repository.
+
 Historical storage-root migration is dry-run by default. Review `external_paths` and `missing_paths` before adding `--apply` to write changes to the database:
 
 ```bash

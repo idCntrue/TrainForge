@@ -11,6 +11,7 @@ def test_deploy_packager_uses_root_scoped_exclusions_and_checks_python_packages(
     assert 'Join-Path $SourceRoot "models"' in script
     assert '"src/yolo_factory/registry/database.py"' in script
     assert '"src/yolo_factory/models/repository.py"' in script
+    assert '"scripts/sync-cloud-data.ps1"' in script
     assert "Forbidden archive entry" in script
     assert "Missing required archive entry" in script
 

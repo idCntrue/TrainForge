@@ -58,6 +58,7 @@ $requiredEntries = @(
     ".env.docker.example",
     "docker/deploy.sh",
     "docker/update-from-package.sh",
+    "scripts/sync-cloud-data.ps1",
     "src/yolo_factory/api/app.py",
     "src/yolo_factory/registry/database.py",
     "src/yolo_factory/models/repository.py",
