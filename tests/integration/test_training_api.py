@@ -125,6 +125,9 @@ def test_named_preset_ignores_client_resource_overrides(tmp_path: Path) -> None:
             "epochs": 999,
             "batch": 999,
             "image_size": 4096,
+            "patience": 299,
+            "optimizer": "AdamW",
+            "close_mosaic": 999,
         })
         manifest = json.loads((Path(response.json()["run_directory"]) / "manifest.json").read_text(encoding="utf-8"))
         client.post(f"/api/training-runs/{response.json()['id']}/cancel")
@@ -133,7 +136,40 @@ def test_named_preset_ignores_client_resource_overrides(tmp_path: Path) -> None:
     assert (response.json()["epochs"], response.json()["batch"], response.json()["image_size"]) == (150, 2, 640)
     assert response.json()["preset_id"] == "cpu-balanced"
     assert manifest["spec"]["patience"] == 25
+    assert manifest["spec"]["optimizer"] == "auto"
+    assert manifest["spec"]["close_mosaic"] == 10
     assert manifest["spec"]["augment_profile"] == "conservative"
+
+
+def test_validates_custom_training_strategy_parameters(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    app = create_app(storage_root=storage, training_engine="simulation", training_step_seconds=0.2)
+
+    with TestClient(app) as client:
+        invalid_optimizer = client.post("/api/training-runs", json=_request() | {
+            "preset_id": "custom",
+            "optimizer": "NotAnOptimizer",
+        })
+        invalid_close_mosaic = client.post("/api/training-runs", json=_request() | {
+            "preset_id": "custom",
+            "epochs": 5,
+            "close_mosaic": 6,
+        })
+        accepted = client.post("/api/training-runs", json=_request() | {
+            "preset_id": "custom",
+            "patience": 0,
+            "optimizer": "AdamW",
+            "close_mosaic": 5,
+        })
+        manifest = json.loads((Path(accepted.json()["run_directory"]) / "manifest.json").read_text(encoding="utf-8"))
+        client.post(f"/api/training-runs/{accepted.json()['id']}/cancel")
+
+    assert invalid_optimizer.status_code == 422
+    assert invalid_close_mosaic.status_code == 422
+    assert accepted.status_code == 201
+    assert manifest["spec"]["patience"] == 0
+    assert manifest["spec"]["optimizer"] == "AdamW"
+    assert manifest["spec"]["close_mosaic"] == 5
 
 
 def test_rejects_low_disk_before_creating_run(tmp_path: Path) -> None:

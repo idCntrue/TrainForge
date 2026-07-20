@@ -214,10 +214,16 @@ class TrainingRunCreateRequest(BaseModel):
     class_aliases: dict[str, str] = Field(default_factory=dict)
     preset_id: str = Field(default="custom", pattern="^(custom|smoke|cpu-balanced|gpu-quality)$")
     patience: int = Field(default=20, ge=0, le=10_000)
-    optimizer: str = Field(default="auto", min_length=1, max_length=64)
+    optimizer: str = Field(default="auto", pattern="^(auto|SGD|Adam|AdamW)$")
     close_mosaic: int = Field(default=10, ge=0, le=10_000)
     augment_profile: str = Field(default="standard", pattern="^(conservative|standard)$")
     augmentation: TrainingAugmentationOptions = Field(default_factory=TrainingAugmentationOptions)
+
+    @model_validator(mode="after")
+    def validate_training_strategy(self) -> "TrainingRunCreateRequest":
+        if "close_mosaic" in self.model_fields_set and self.close_mosaic > self.epochs:
+            raise ValueError("close_mosaic must not exceed epochs")
+        return self
 
 
 class TrainingRetryRequest(BaseModel):

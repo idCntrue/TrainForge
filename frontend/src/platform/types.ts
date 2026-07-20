@@ -37,6 +37,11 @@ export interface TrainingRun {
   sourceRunId?: string
   executionMode: 'train' | 'evaluate_existing'
   presetId: 'custom' | 'smoke' | 'cpu-balanced' | 'gpu-quality'
+  patience: number
+  optimizer: 'auto' | 'SGD' | 'Adam' | 'AdamW'
+  closeMosaic: number
+  augmentProfile: 'conservative' | 'standard'
+  augmentation: import('../api').TrainingAugmentationOptions
 }
 
 export interface CreateTrainingRunInput {
@@ -51,6 +56,10 @@ export interface CreateTrainingRunInput {
   selectedClasses?: string[]
   classAliases?: Record<string, string>
   presetId?: 'custom' | 'smoke' | 'cpu-balanced' | 'gpu-quality'
+  patience?: number
+  optimizer?: 'auto' | 'SGD' | 'Adam' | 'AdamW'
+  closeMosaic?: number
+  augmentProfile?: 'conservative' | 'standard'
   augmentation?: Partial<import('../api').TrainingAugmentationOptions>
 }
 

@@ -592,6 +592,12 @@ export const api = {
     form.append('device', input.device)
     form.append('selected_classes', JSON.stringify(input.selected_classes))
     form.append('class_aliases', JSON.stringify(input.class_aliases))
+    if (input.preset_id !== undefined) form.append('preset_id', input.preset_id)
+    if (input.patience !== undefined) form.append('patience', String(input.patience))
+    if (input.optimizer !== undefined) form.append('optimizer', input.optimizer)
+    if (input.close_mosaic !== undefined) form.append('close_mosaic', String(input.close_mosaic))
+    if (input.augment_profile !== undefined) form.append('augment_profile', input.augment_profile)
+    if (input.augmentation !== undefined) form.append('augmentation', JSON.stringify(input.augmentation))
     form.append('base_model_file', file)
     return postFormWithProgress<TrainingRunApiResponse>('/training-runs/upload', form, onProgress)
   },

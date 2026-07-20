@@ -42,6 +42,11 @@ export function mapTrainingRun(run: TrainingRunApiResponse): TrainingRun {
     sourceRunId: run.source_run_id ?? undefined,
     executionMode: run.execution_mode,
     presetId: run.preset_id,
+    patience: run.patience,
+    optimizer: run.optimizer as TrainingRun['optimizer'],
+    closeMosaic: run.close_mosaic,
+    augmentProfile: run.augment_profile,
+    augmentation: run.augmentation,
   }
 }
 
@@ -72,6 +77,10 @@ export function createApiTrainingRepository(client: TrainingRepositoryClient): T
         selected_classes: input.selectedClasses ?? [],
         class_aliases: input.classAliases ?? {},
         preset_id: input.presetId ?? 'custom',
+        patience: input.patience,
+        optimizer: input.optimizer,
+        close_mosaic: input.closeMosaic,
+        augment_profile: input.augmentProfile,
         augmentation: input.augmentation,
       }))
     },
