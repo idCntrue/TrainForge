@@ -320,6 +320,19 @@ button, input { font: inherit; }
 .smart-select-panel { min-width: 0; margin-top: 4px; padding: 10px; overflow: hidden; display: flex; flex-direction: column; gap: 8px; border: 1px solid #8b6cff; border-radius: 6px; background: #fbfaff; }.smart-select-title { display: flex; align-items: center; justify-content: space-between; color: #6f3ff5; }.smart-select-panel > p { margin: 0; padding: 8px; border-radius: 4px; background: #eceef2; color: #626b75; font-size: 10px; line-height: 1.5; }.simplify-labels { margin-top: -8px; display: flex; justify-content: space-between; color: #6f7882; font-size: 9px; }.smart-select-actions { padding-top: 8px; display: grid; grid-template-columns: 1fr; gap: 8px; border-top: 1px solid #e4e0ef; }.smart-select-actions .ant-btn { width: 100%; min-width: 0; }.smart-select-actions .ant-btn-primary { background: #733fe8; }
 
 /* Mobile adaptive application shell */
+.training-creation-drawer .ant-drawer-body { padding: 0; overflow: hidden; }
+.training-creation-drawer .ant-drawer-footer { padding: 12px 20px; background: #fff; border-top: 1px solid #e1e7e5; }
+.training-wizard-body { height: 100%; min-width: 0; display: flex; flex-direction: column; }
+.training-wizard-steps { flex: 0 0 auto; padding: 20px 24px 16px; border-bottom: 1px solid #e5eae8; background: #fafcfb; }
+.training-wizard-steps .ant-steps-item-title { font-size: 12px; }
+.training-wizard-step-content { flex: 1; min-height: 0; overflow-y: auto; padding: 22px 24px 34px; }
+.training-wizard-step-content .ant-alert { margin-bottom: 18px; }
+.training-wizard-footer { width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.training-wizard-confirm > h3 { margin: 0 0 6px; font-size: 17px; }
+.training-wizard-confirm > p { margin: 0 0 18px; color: #687570; font-size: 12px; line-height: 1.7; }
+.training-wizard-confirm dl { margin: 0; border-top: 1px solid #e3e9e6; }
+.training-wizard-confirm dl > div { min-height: 48px; padding: 10px 4px; display: grid; grid-template-columns: 170px minmax(0, 1fr); align-items: center; gap: 16px; border-bottom: 1px solid #e8ecea; }
+.training-wizard-confirm dt { color: #71807b; font-size: 11px; }.training-wizard-confirm dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: #25342f; font-size: 13px; font-weight: 600; }
 :root { --mobile-navigation-height: 68px; }
 .mobile-bottom-navigation { display: none; }
 .mobile-navigation-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -340,6 +353,16 @@ button, input { font: inherit; }
 .mobile-empty-state { min-height: 120px; display: grid; place-items: center; color: #7b8884; font-size: 12px; }
 
 @media (max-width: 900px) {
+  .training-creation-drawer .ant-drawer-content-wrapper { width: 100vw !important; }
+  .training-creation-drawer .ant-drawer-header { flex: 0 0 auto; }
+  .training-creation-drawer .ant-drawer-body { height: 0; flex: 1; padding: 0; }
+  .training-creation-drawer .ant-drawer-footer { flex: 0 0 auto; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  .training-wizard-steps { padding: 13px 10px 10px; }
+  .training-wizard-steps .ant-steps-item { min-width: 0; }
+  .training-wizard-steps .ant-steps-item-title { max-width: 58px; font-size: 10px; line-height: 1.25; white-space: normal; }
+  .training-wizard-step-content { padding: 16px 12px 24px; }
+  .training-wizard-step-content .form-grid { grid-template-columns: 1fr; }
+  .training-wizard-confirm dl > div { grid-template-columns: 120px minmax(0, 1fr); gap: 10px; }
   .app-shell { position: relative; }
   .sidebar { display: none; }
   .app-shell > .ant-layout { width: 100%; }
