@@ -290,6 +290,12 @@ class ModelVersionResponse(BaseModel):
     archived_at: datetime | None
 
 
+class ModelGateReportResponse(BaseModel):
+    available: bool
+    report: dict | None = None
+    reason: str | None = None
+
+
 class InferenceRunCreateRequest(BaseModel):
     model_version_id: str = Field(min_length=1, max_length=160)
     mode: str

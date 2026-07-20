@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from yolo_factory.api.app import create_app
 from yolo_factory.registry.database import create_registry, session_scope
-from yolo_factory.registry.models import AnnotationExport, DatasetRelease, Task
+from yolo_factory.registry.models import AnnotationExport, DatasetRelease, ModelVersionRecord, Task
 from yolo_factory.training.models import TrainingRunSpec
 from yolo_factory.training.repository import TrainingRunRepository
 
@@ -70,6 +70,85 @@ def test_registers_gates_publishes_and_archives_model(tmp_path: Path) -> None:
 
         archived = client.post(f"/api/model-versions/{model_id}/archive")
         assert archived.json()["status"] == "archived"
+
+
+def test_reads_persisted_model_gate_report(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", model_gate_executor=PassingGates())) as client:
+        model_id = client.post(
+            "/api/model-versions",
+            json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"},
+        ).json()["id"]
+        client.post(f"/api/model-versions/{model_id}/gates")
+
+        response = client.get(f"/api/model-versions/{model_id}/gate-report")
+
+    assert response.status_code == 200
+    assert response.json() == {"available": True, "report": {}, "reason": None}
+
+
+def test_reports_when_model_gate_report_is_not_available(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", model_gate_executor=PassingGates())) as client:
+        model_id = client.post(
+            "/api/model-versions",
+            json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"},
+        ).json()["id"]
+
+        never_run = client.get(f"/api/model-versions/{model_id}/gate-report")
+        gated = client.post(f"/api/model-versions/{model_id}/gates").json()
+        Path(gated["gate_report_path"]).unlink()
+        deleted = client.get(f"/api/model-versions/{model_id}/gate-report")
+
+    assert never_run.status_code == 200
+    assert never_run.json() == {"available": False, "report": None, "reason": "not_generated"}
+    assert deleted.status_code == 200
+    assert deleted.json() == {"available": False, "report": None, "reason": "missing"}
+
+
+def test_rejects_unsafe_or_invalid_model_gate_reports(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    registry = create_registry(storage / "registry" / "factory.db")
+    outside = tmp_path / "private-report.json"
+    outside.write_text('{"secret": true}', encoding="utf-8")
+
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", model_gate_executor=PassingGates())) as client:
+        model_id = client.post(
+            "/api/model-versions",
+            json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"},
+        ).json()["id"]
+        client.post(f"/api/model-versions/{model_id}/gates")
+        with session_scope(registry) as session:
+            session.get(ModelVersionRecord, model_id).gate_report_path = str(outside)
+
+        unsafe = client.get(f"/api/model-versions/{model_id}/gate-report")
+
+        invalid = storage / "model-versions" / model_id / "invalid.json"
+        invalid.parent.mkdir(parents=True, exist_ok=True)
+        invalid.write_text("[]", encoding="utf-8")
+        with session_scope(registry) as session:
+            session.get(ModelVersionRecord, model_id).gate_report_path = str(invalid)
+        non_object = client.get(f"/api/model-versions/{model_id}/gate-report")
+
+        invalid.write_text("{broken", encoding="utf-8")
+        malformed = client.get(f"/api/model-versions/{model_id}/gate-report")
+
+    assert unsafe.status_code == 409
+    assert unsafe.json()["detail"] == "model gate report is outside storage root"
+    assert str(outside) not in unsafe.text
+    assert non_object.status_code == 409
+    assert non_object.json()["detail"] == "model gate report is invalid"
+    assert malformed.status_code == 409
+    assert malformed.json()["detail"] == "model gate report is invalid"
+
+
+def test_model_gate_report_returns_not_found_for_unknown_model(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation")) as client:
+        response = client.get("/api/model-versions/model-missing/gate-report")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "model version not found"
 
 
 def test_blocks_publication_without_independent_test_snapshot(tmp_path: Path) -> None:

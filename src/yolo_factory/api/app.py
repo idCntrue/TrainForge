@@ -51,6 +51,7 @@ from yolo_factory.api.schemas import (
     TrainingRunResponse,
     ModelVersionCreateRequest,
     ModelVersionResponse,
+    ModelGateReportResponse,
     InferenceRunCreateRequest,
     InferenceRunResponse,
     AnnotationSyncRequest,
@@ -1146,6 +1147,33 @@ def create_app(
             return _model_response(model_repository.get_required(model_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="model version not found") from exc
+
+    @app.get("/api/model-versions/{model_id}/gate-report", response_model=ModelGateReportResponse)
+    def model_gate_report(model_id: str) -> ModelGateReportResponse:
+        try:
+            model = model_repository.get_required(model_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="model version not found") from exc
+        if not model.gate_report_path:
+            return ModelGateReportResponse(available=False, reason="not_generated")
+
+        report_path = Path(model.gate_report_path)
+        if not report_path.is_absolute():
+            report_path = root / report_path
+        report_path = report_path.resolve()
+        try:
+            report_path.relative_to(root)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail="model gate report is outside storage root") from exc
+        if not report_path.is_file():
+            return ModelGateReportResponse(available=False, reason="missing")
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=409, detail="model gate report is invalid") from exc
+        if not isinstance(report, dict):
+            raise HTTPException(status_code=409, detail="model gate report is invalid")
+        return ModelGateReportResponse(available=True, report=report)
 
     @app.post("/api/model-versions/{model_id}/gates", response_model=ModelVersionResponse)
     @heavy_operation("model-gates")
