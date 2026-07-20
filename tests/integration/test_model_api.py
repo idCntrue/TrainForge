@@ -57,6 +57,8 @@ def test_registers_gates_publishes_and_archives_model(tmp_path: Path) -> None:
         assert created.status_code == 201
         model_id = created.json()["id"]
         assert created.json()["status"] == "candidate"
+        assert created.json()["artifacts"]["pt"]["exists"] is True
+        assert Path(created.json()["artifacts"]["pt"]["path"]).is_absolute()
         assert created.json()["gates"]["independent_test_available"] is True
         assert created.json()["gates"]["quality_recommended"] is True
 

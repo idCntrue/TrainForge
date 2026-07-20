@@ -52,6 +52,7 @@ from yolo_factory.api.schemas import (
     ModelVersionCreateRequest,
     ModelVersionResponse,
     ModelGateReportResponse,
+    ImportedModelResponse,
     InferenceRunCreateRequest,
     InferenceRunResponse,
     AnnotationSyncRequest,
@@ -83,6 +84,9 @@ from yolo_factory.datasets.quality import analyze_dataset_quality
 from yolo_factory.models.domain import ModelVersionSpec
 from yolo_factory.models.executor import LocalModelGateExecutor, ModelGateError
 from yolo_factory.models.repository import DuplicateModelRegistration, InvalidModelTransition, ModelVersionRepository, PublishedModelDeletion, ReferencedModelDeletion
+from yolo_factory.models.gates import file_metadata
+from yolo_factory.models.imported_inspector import inspect_imported_model
+from yolo_factory.models.imported_repository import ImportedModelRepository, ReferencedImportedModelDeletion
 from yolo_factory.inference.executor import InferenceExecutionError, LocalInferenceExecutor
 from yolo_factory.inference.repository import ActiveInferenceRunDeletion, InferenceRunRepository
 from yolo_factory.common.operation_guard import ActiveHeavyOperationError, HeavyOperationGuard
@@ -295,7 +299,20 @@ def _training_response(run: TrainingRun) -> TrainingRunResponse:
     )
 
 
+def _artifact_response(path_value: str) -> dict:
+    path = Path(path_value).resolve()
+    if not path.is_file():
+        return {"path": str(path), "exists": False, "size_bytes": 0, "sha256": ""}
+    return {**file_metadata(path), "exists": True}
+
+
 def _model_response(model) -> ModelVersionResponse:
+    artifacts = {key: dict(value) for key, value in model.artifacts.items()}
+    artifacts.setdefault("pt", _artifact_response(model.spec.pt_path))
+    for key, artifact in artifacts.items():
+        path_value = artifact.get("path") if isinstance(artifact, dict) else None
+        if path_value:
+            artifacts[key] = {**artifact, **_artifact_response(path_value)}
     return ModelVersionResponse(
         id=model.id,
         name=model.spec.name,
@@ -308,7 +325,7 @@ def _model_response(model) -> ModelVersionResponse:
         metrics=model.spec.metrics,
         status=model.status,
         gates=model.gates,
-        artifacts=model.artifacts,
+        artifacts=artifacts,
         environment=model.environment,
         gate_report_path=model.gate_report_path,
         quality_report=model.spec.quality_report,
@@ -326,6 +343,16 @@ def _inference_response(run: dict) -> InferenceRunResponse:
         if result_path.is_file():
             result = json.loads(result_path.read_text(encoding="utf-8"))
     return InferenceRunResponse(**run, result=result)
+
+
+def _imported_model_response(model) -> ImportedModelResponse:
+    return ImportedModelResponse(
+        id=model.id, name=model.name, task_type=model.task_type,
+        artifact_format=model.artifact_format, original_name=model.original_name,
+        artifact=_artifact_response(model.artifact_path), status=model.status,
+        class_names=list(model.class_names), created_at=model.created_at,
+        updated_at=model.updated_at,
+    )
 
 
 def _annotation_response(image) -> AnnotationImageResponse:
@@ -350,6 +377,7 @@ def create_app(
     training_resource_policy: TrainingResourcePolicy | None = None,
     training_disk_usage=shutil.disk_usage,
     training_storage_cleanup=cleanup_training_storage,
+    imported_model_inspector=inspect_imported_model,
 ) -> FastAPI:
     root = (storage_root or _default_storage_root()).resolve()
     max_upload_bytes = _upload_byte_limit()
@@ -358,7 +386,7 @@ def create_app(
     )
     task_configs = (task_config_dir or default_task_configs).resolve()
     registry = create_registry(root / "registry" / "factory.db")
-    app = FastAPI(title="YOLO Model Factory", version="0.1.0")
+    app = FastAPI(title="YOLO Model Factory", version="0.1.1")
     app.state.storage_root = root
     app.state.registry = registry
     object_storage = LocalObjectStorage(root)
@@ -408,8 +436,10 @@ def create_app(
             app.state.last_training_cleanup = {"errors": (str(exc),)}
         resource_policy.validate_free_disk(root, usage=training_disk_usage)
     model_repository = ModelVersionRepository(registry)
+    imported_model_repository = ImportedModelRepository(registry)
     gate_executor = model_gate_executor or LocalModelGateExecutor(root)
     app.state.model_repository = model_repository
+    app.state.imported_model_repository = imported_model_repository
     app.state.model_gate_executor = gate_executor
     inference_repository = InferenceRunRepository(registry)
     local_inference_executor = inference_executor or LocalInferenceExecutor(inference_repository, root)
@@ -1279,6 +1309,80 @@ def create_app(
         except (PublishedModelDeletion, ReferencedModelDeletion) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/api/imported-models", response_model=ImportedModelResponse, status_code=201)
+    async def import_test_model(
+        name: str = Form(...),
+        task_type: str = Form(...),
+        class_names: str = Form("[]"),
+        file: UploadFile = File(...),
+    ) -> ImportedModelResponse:
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise HTTPException(status_code=422, detail="model name must not be blank")
+        if task_type not in {"detect", "segment"}:
+            raise HTTPException(status_code=422, detail="task type must be detect or segment")
+        filename = safe_upload_name(file, {".pt", ".onnx"}, "model file")
+        artifact_format = Path(filename).suffix.lower().lstrip(".")
+        try:
+            provided_classes = json.loads(class_names)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="class_names must be a JSON array") from exc
+        if not isinstance(provided_classes, list) or any(not isinstance(item, str) or not item.strip() for item in provided_classes):
+            raise HTTPException(status_code=422, detail="class_names must be a JSON array of non-empty strings")
+
+        model_id = f"imported-model-{uuid.uuid4().hex}"
+        model_directory = root / "imported-models" / model_id
+        destination = model_directory / filename
+        try:
+            if await save_uploaded_file(file, destination) == 0:
+                raise HTTPException(status_code=422, detail="model file is empty")
+            try:
+                inspected = imported_model_inspector(destination, artifact_format)
+            except Exception as exc:
+                raise HTTPException(status_code=422, detail=f"model file could not be loaded: {exc}") from exc
+            discovered_task = str(inspected.get("task_type") or "")
+            if discovered_task and discovered_task != task_type:
+                raise HTTPException(status_code=422, detail=f"model task is {discovered_task}, not {task_type}")
+            discovered_classes = inspected.get("class_names") or []
+            effective_classes = tuple(str(item) for item in (provided_classes or discovered_classes))
+            metadata = file_metadata(destination)
+            model = imported_model_repository.create(
+                model_id=model_id, name=normalized_name, task_type=task_type,
+                artifact_format=artifact_format, original_name=filename,
+                artifact_path=metadata["path"], size_bytes=metadata["size_bytes"],
+                sha256=metadata["sha256"], class_names=effective_classes,
+            )
+            return _imported_model_response(model)
+        except Exception:
+            if imported_model_repository.get(model_id) is None:
+                shutil.rmtree(model_directory, ignore_errors=True)
+            raise
+
+    @app.get("/api/imported-models", response_model=list[ImportedModelResponse])
+    def imported_models() -> list[ImportedModelResponse]:
+        return [_imported_model_response(model) for model in imported_model_repository.list()]
+
+    @app.delete("/api/imported-models/{model_id}", status_code=204)
+    def delete_imported_model(model_id: str, delete_artifact: bool = True) -> Response:
+        try:
+            model = imported_model_repository.get_required(model_id)
+            artifact_path = require_path_within(
+                Path(model.artifact_path), root / "imported-models",
+                "imported model artifact is outside managed storage",
+            )
+            imported_model_repository.delete(model_id)
+            if delete_artifact and artifact_path.is_file():
+                artifact_path.unlink()
+                try:
+                    artifact_path.parent.rmdir()
+                except OSError:
+                    pass
+            return Response(status_code=204)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="imported model not found") from exc
+        except ReferencedImportedModelDeletion as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/inference-runs", response_model=InferenceRunResponse, status_code=201)
     @heavy_operation("inference")
     def create_inference_run(req: InferenceRunCreateRequest) -> InferenceRunResponse:
@@ -1286,12 +1390,20 @@ def create_app(
             raise HTTPException(status_code=422, detail="mode must be image, batch or video")
         if req.runtime not in {"pt", "onnx"}:
             raise HTTPException(status_code=422, detail="runtime must be pt or onnx")
-        try:
-            model = model_repository.get_required(req.model_version_id)
-        except KeyError as exc:
-            raise HTTPException(status_code=404, detail="model version not found") from exc
-        if model.status != "published":
-            raise HTTPException(status_code=409, detail="only published models can run inference")
+        model = None
+        imported_model = None
+        if req.model_version_id:
+            try:
+                model = model_repository.get_required(req.model_version_id)
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail="model version not found") from exc
+            if model.status == "archived":
+                raise HTTPException(status_code=409, detail="archived models cannot start new inference runs")
+        else:
+            try:
+                imported_model = imported_model_repository.get_required(req.imported_model_id or "")
+            except KeyError as exc:
+                raise HTTPException(status_code=404, detail="imported model not found") from exc
         imports_root = root / "imports"
         sources = [
             require_path_within(Path(source), imports_root, "inference sources must be inside the managed imports directory")
@@ -1306,25 +1418,35 @@ def create_app(
         if any(run["status"] in {"queued", "running"} for run in inference_repository.list()):
             raise HTTPException(status_code=409, detail="another GPU operation is active")
 
-        artifact = model.artifacts.get(req.runtime, {})
-        artifact_path = artifact.get("path") if isinstance(artifact, dict) else None
-        if req.runtime == "pt" and not artifact_path:
-            artifact_path = model.spec.pt_path
+        artifact_path = None
+        if model is not None:
+            artifact = model.artifacts.get(req.runtime, {})
+            artifact_path = artifact.get("path") if isinstance(artifact, dict) else None
+            if req.runtime == "pt" and not artifact_path:
+                artifact_path = model.spec.pt_path
+            task_type = model.spec.task_type
+        else:
+            if req.runtime != imported_model.artifact_format:
+                raise HTTPException(status_code=409, detail=f"imported model only provides {imported_model.artifact_format.upper()}")
+            artifact_path = imported_model.artifact_path
+            task_type = imported_model.task_type
         if not artifact_path or not Path(artifact_path).is_file():
-            raise HTTPException(status_code=409, detail=f"published model {req.runtime.upper()} artifact is missing")
+            raise HTTPException(status_code=409, detail=f"model {req.runtime.upper()} artifact is missing")
 
         run_id = f"inference-{uuid.uuid4().hex}"
         inference_repository.create(
             run_id=run_id,
-            model_version_id=model.id,
+            model_version_id=model.id if model is not None else None,
+            imported_model_id=imported_model.id if imported_model is not None else None,
             mode=req.mode,
             runtime=req.runtime,
             sources=[str(source) for source in sources],
             confidence=req.confidence,
         )
         payload = {
-            "model_version_id": model.id,
-            "task_type": model.spec.task_type,
+            "model_version_id": model.id if model is not None else None,
+            "imported_model_id": imported_model.id if imported_model is not None else None,
+            "task_type": task_type,
             "artifact_path": str(Path(artifact_path).resolve()),
             "runtime": req.runtime,
             "mode": req.mode,
@@ -1356,7 +1478,8 @@ def create_app(
 
     @app.post("/api/inference-runs/upload", response_model=InferenceRunResponse, status_code=201)
     async def create_inference_run_from_upload(
-        model_version_id: str = Form(...),
+        model_version_id: str | None = Form(None),
+        imported_model_id: str | None = Form(None),
         mode: str = Form(...),
         runtime: str = Form(...),
         confidence: float = Form(...),
@@ -1386,6 +1509,7 @@ def create_app(
                 sources.append(str(destination.resolve()))
             request = InferenceRunCreateRequest(
                 model_version_id=model_version_id,
+                imported_model_id=imported_model_id,
                 mode=mode,
                 runtime=runtime,
                 sources=sources,

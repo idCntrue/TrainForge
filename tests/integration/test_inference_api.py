@@ -130,3 +130,71 @@ def test_async_inference_returns_immediately_and_exposes_refresh_and_cancel(tmp_
     assert started.json()["status"] == "running"
     assert refreshed.json()["status"] == "completed"
     assert cancelled.json()["status"] == "cancelled"
+
+
+def test_runs_inference_with_unpublished_candidate_model(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    source = storage / "imports" / "inputs" / "sample.jpg"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"source")
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", inference_executor=PassingInference())) as client:
+        candidate = client.post(
+            "/api/model-versions",
+            json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"},
+        ).json()
+        response = client.post("/api/inference-runs", json={
+            "model_version_id": candidate["id"], "mode": "image", "runtime": "pt",
+            "sources": [str(source)], "confidence": 0.25,
+        })
+
+    assert response.status_code == 201
+    assert response.json()["model_version_id"] == candidate["id"]
+
+
+def test_imports_reuses_and_protects_external_test_model(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    inspector = lambda path, artifact_format: {"task_type": "segment", "class_names": ["tag"]}
+    with TestClient(create_app(
+        storage_root=storage, training_engine="simulation", inference_executor=PassingInference(),
+        imported_model_inspector=inspector,
+    )) as client:
+        imported_response = client.post(
+            "/api/imported-models",
+            data={"name": "external segmenter", "task_type": "segment", "class_names": "[]"},
+            files={"file": ("best.pt", b"external-model", "application/octet-stream")},
+        )
+        assert imported_response.status_code == 201
+        imported = imported_response.json()
+        artifact = Path(imported["artifact"]["path"])
+        assert artifact.is_file()
+        assert artifact.is_relative_to(storage / "imported-models")
+        assert imported["artifact"]["exists"] is True
+        assert imported["artifact"]["sha256"]
+        assert imported["class_names"] == ["tag"]
+        assert client.get("/api/imported-models").json()[0]["id"] == imported["id"]
+
+        inference = client.post(
+            "/api/inference-runs/upload",
+            data={
+                "imported_model_id": imported["id"], "mode": "image",
+                "runtime": "pt", "confidence": "0.25",
+            },
+            files=[("files", ("sample.jpg", b"image", "image/jpeg"))],
+        )
+        blocked_delete = client.delete(f"/api/imported-models/{imported['id']}")
+
+    assert inference.status_code == 201
+    assert inference.json()["imported_model_id"] == imported["id"]
+    assert blocked_delete.status_code == 409
+
+
+def test_rejects_invalid_imported_model_extension(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation")) as client:
+        response = client.post(
+            "/api/imported-models",
+            data={"name": "bad", "task_type": "detect", "class_names": "[]"},
+            files={"file": ("model.txt", b"bad", "text/plain")},
+        )
+
+    assert response.status_code == 422
