@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
+import re
 
 
 @dataclass(frozen=True)
@@ -38,8 +39,8 @@ class TrainingFailureDiagnostic:
 
 _PRESENTATION = {
     "resource_limit": (
-        "训练进程被外部强制终止，通常与内存或容器资源限制有关",
-        "使用 CPU 安全配置重试，并降低图像尺寸或 Batch",
+        "训练因系统内存或运行资源不足而终止",
+        "降低图像尺寸或 Batch，并将 DataLoader worker 设为 0；关闭占用内存的程序后重试",
     ),
     "disk_full": ("训练存储空间不足", "清理磁盘或扩容后重试"),
     "device_unavailable": ("所选训练设备不可用", "改用可用设备，云端无 GPU 时请选择 CPU"),
@@ -78,7 +79,8 @@ def classify_training_failure(
         signatures = (
             ("disk_full", ("no space left on device", "errno 28")),
             ("device_unavailable", ("invalid cuda device", "cuda is not available", "no cuda gpus are available")),
-            ("dependency_import", ("modulenotfounderror", "no module named", "importerror")),
+            ("resource_limit", ("outofmemoryerror", "insufficient memory", "failed to allocate", "memoryerror")),
+            ("dependency_import", ("modulenotfounderror", "no module named")),
             ("dataset_invalid", ("dataset images not found", "dataset not found", "no images found", "labels not found")),
             ("base_model_unavailable", ("model not found", ".pt not found", "failed to download", "unable to load model")),
         )
@@ -89,6 +91,9 @@ def classify_training_failure(
                 code = candidate
                 evidence.append(f"failure text contains: {match}")
                 break
+        if code == "runner_failed" and re.search(r"\bimporterror\s*:", combined):
+            code = "dependency_import"
+            evidence.append("failure text contains an ImportError exception")
 
     scope = "post_training" if failure_phase in {"evaluation", "evaluating", "export", "exporting", "verification", "verifying"} else "training"
     can_evaluate = scope == "post_training" and bool(best_weight_path)

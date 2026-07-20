@@ -70,6 +70,26 @@ def test_classifies_strong_failure_signatures() -> None:
         assert _classify(message=message, log_tail=[message]).code == expected
 
 
+def test_classifies_opencv_allocation_failure_as_system_memory_limit() -> None:
+    message = (
+        "cv2.error: OpenCV(4.11.0) alloc.cpp:73: error: "
+        "(-4:Insufficient memory) Failed to allocate 1216512 bytes "
+        "in function 'cv::OutOfMemoryError'"
+    )
+
+    diagnostic = _classify(message=message, log_tail=[message])
+
+    assert diagnostic.code == "resource_limit"
+    assert "系统内存" in diagnostic.summary
+    assert "图像尺寸" in diagnostic.action
+    assert "DataLoader" in diagnostic.action
+
+
+def test_import_error_requires_a_real_import_exception_signature() -> None:
+    assert _classify(message="ImportError: cannot import name 'YOLO'").code == "dependency_import"
+    assert _classify(message="cv::OutOfMemoryError").code == "resource_limit"
+
+
 def test_unknown_failure_uses_runner_failed_fallback() -> None:
     assert _classify(message="unexpected worker failure").code == "runner_failed"
 
