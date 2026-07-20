@@ -7,6 +7,10 @@ export const trainingFormInitialValues: Partial<CreateTrainingRunInput> = {
   imageSize: 320,
   device: 'cpu',
   presetId: 'cpu-balanced',
+  patience: 25,
+  optimizer: 'auto',
+  closeMosaic: 10,
+  augmentProfile: 'conservative',
   augmentation: {
     mosaic: 1.0,
     mixup: 0.0,
