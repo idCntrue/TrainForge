@@ -60,9 +60,11 @@ export interface TrainingFilters {
 }
 
 export interface ReleaseGate {
+  key: string
   label: string
   status: 'passed' | 'running' | 'blocked'
   detail: string
+  advisory: boolean
 }
 
 export interface ModelArtifact {
@@ -83,6 +85,7 @@ export interface ModelArtifact {
   baseModel: string
   weightHash: string
   environment: string
+  gateReportPath?: string
   gates: ReleaseGate[]
   qualityReport?: import('../api').TrainingQualityReport
 }

@@ -1,6 +1,7 @@
 import type { DashboardSummary, InferenceRunApiResponse, ModelVersionApiResponse, TrainingRunApiResponse } from '../api'
 import { mapTrainingRun } from './apiTrainingRepository'
 import type { CreateInferenceRunInput, InferenceRun, ModelArtifact, ModelFilters, PlatformRepository } from './types'
+import { gateDefinition } from '../pages/platform/modelGateDiagnostics'
 
 export interface PlatformApiClient {
   dashboard(): Promise<DashboardSummary>
@@ -28,7 +29,11 @@ export function mapModel(model: ModelVersionApiResponse): ModelArtifact {
     sizeMb: Math.round(artifacts.reduce((sum, [, item]) => sum + (item.size_bytes ?? 0), 0) / 1024 / 1024 * 10) / 10,
     formats: artifacts.map(([format]) => format.toUpperCase()), publishedAt: model.published_at ?? undefined, createdAt: model.created_at,
     baseModel: '-', weightHash: model.artifacts.pt?.sha256 ?? '-', environment: Object.entries(model.environment).map(([key, value]) => `${key} ${value}`).join(', ') || '-',
-    gates: Object.entries(model.gates).map(([label, passed]) => ({ label, status: passed ? 'passed' : 'blocked', detail: passed ? '已通过' : '未通过' })),
+    gates: Object.entries(model.gates).map(([key, passed]) => {
+      const definition = gateDefinition(key)
+      return { key, label: definition.label, status: passed ? 'passed' : 'blocked', detail: passed ? '已通过' : '未通过', advisory: definition.advisory }
+    }),
+    gateReportPath: model.gate_report_path ?? undefined,
     qualityReport: model.quality_report ?? undefined,
   }
 }

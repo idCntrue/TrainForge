@@ -301,6 +301,34 @@ export interface ModelVersionApiResponse {
   quality_report?: TrainingQualityReport | null
 }
 
+export interface ModelGatePredictionPair {
+  class_id: number
+  box_iou: number
+  confidence_delta: number
+  mask_iou?: number | null
+  passed: boolean
+}
+
+export interface ModelGateSampleReport {
+  source: string
+  passed: boolean
+  pt_count: number
+  onnx_count: number
+  pairs: ModelGatePredictionPair[]
+}
+
+export interface ModelGateReport {
+  passed?: boolean
+  gates?: Record<string, boolean>
+  samples?: ModelGateSampleReport[]
+}
+
+export interface ModelGateReportApiResponse {
+  available: boolean
+  report: ModelGateReport | null
+  reason: 'not_generated' | 'missing' | string | null
+}
+
 export interface InferenceRunApiResponse {
   id: string
   model_version_id: string
@@ -575,6 +603,7 @@ export const api = {
   listModelVersions: () => getJson<ModelVersionApiResponse[]>('/model-versions'),
   createModelVersion: (input: { training_run_id: string; name: string; version: string }) => postJson<ModelVersionApiResponse>('/model-versions', input),
   runModelGates: (id: string) => postJson<ModelVersionApiResponse>(`/model-versions/${id}/gates`, {}),
+  getModelGateReport: (id: string) => getJson<ModelGateReportApiResponse>(`/model-versions/${id}/gate-report`),
   publishModel: (id: string) => postJson<ModelVersionApiResponse>(`/model-versions/${id}/publish`, {}),
   archiveModel: (id: string) => postJson<ModelVersionApiResponse>(`/model-versions/${id}/archive`, {}),
   deleteModel: (id: string, deleteArtifacts = false, cascade = false) => deleteResource(`/model-versions/${id}?delete_artifacts=${deleteArtifacts}&cascade=${cascade}`),

@@ -40,6 +40,8 @@ describe('API platform repository', () => {
     const repository = createApiPlatformRepository(client())
     const models = await repository.listModels({ task: 'segment', status: 'published' })
     expect(models[0]).toMatchObject({ id: 'model-001', task: 'segment', formats: ['PT', 'ONNX'], weightHash: 'abc', primaryMetric: 0.42 })
+    expect(models[0].gateReportPath).toBe('report.json')
+    expect(models[0].gates.find((gate) => gate.key === 'consistency')).toMatchObject({ label: 'PT 与 ONNX 推理一致性', advisory: false })
     expect(models[0].gates.every((gate) => gate.status === 'passed')).toBe(true)
   })
 
