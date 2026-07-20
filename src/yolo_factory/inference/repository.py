@@ -15,9 +15,11 @@ class InferenceRunRepository:
     def __init__(self, registry: Registry) -> None:
         self._registry = registry
 
-    def create(self, *, run_id: str, model_version_id: str, mode: str, runtime: str, sources: list[str], confidence: float) -> dict:
+    def create(self, *, run_id: str, mode: str, runtime: str, sources: list[str], confidence: float, model_version_id: str | None = None, imported_model_id: str | None = None) -> dict:
+        if (model_version_id is None) == (imported_model_id is None):
+            raise ValueError("exactly one inference model source is required")
         with session_scope(self._registry) as session:
-            session.add(InferenceRunRecord(id=run_id, model_version_id=model_version_id, mode=mode, runtime=runtime, config_json=json.dumps({"sources": sources, "confidence": confidence}, sort_keys=True), status="queued", progress=0, message="Queued"))
+            session.add(InferenceRunRecord(id=run_id, model_version_id=model_version_id, imported_model_id=imported_model_id, mode=mode, runtime=runtime, config_json=json.dumps({"sources": sources, "confidence": confidence}, sort_keys=True), status="queued", progress=0, message="Queued"))
         return self.get_required(run_id)
 
     def get_required(self, run_id: str) -> dict:
@@ -68,4 +70,4 @@ class InferenceRunRepository:
 
 def _to_dict(record: InferenceRunRecord) -> dict:
     config = json.loads(record.config_json)
-    return {"id": record.id, "model_version_id": record.model_version_id, "mode": record.mode, "runtime": record.runtime, "sources": config["sources"], "confidence": config["confidence"], "status": record.status, "progress": record.progress, "message": record.message, "pid": config.get("pid"), "run_directory": config.get("run_directory"), "output_directory": record.output_directory, "result_path": record.result_path, "created_at": record.created_at, "updated_at": record.updated_at, "finished_at": record.finished_at}
+    return {"id": record.id, "model_version_id": record.model_version_id, "imported_model_id": record.imported_model_id, "mode": record.mode, "runtime": record.runtime, "sources": config["sources"], "confidence": config["confidence"], "status": record.status, "progress": record.progress, "message": record.message, "pid": config.get("pid"), "run_directory": config.get("run_directory"), "output_directory": record.output_directory, "result_path": record.result_path, "created_at": record.created_at, "updated_at": record.updated_at, "finished_at": record.finished_at}

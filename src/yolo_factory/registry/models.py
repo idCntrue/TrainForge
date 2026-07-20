@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -200,11 +200,35 @@ class ModelVersionRecord(Base, TimestampMixin):
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now, nullable=False)
 
 
-class InferenceRunRecord(Base, TimestampMixin):
-    __tablename__ = "inference_runs"
+class ImportedModelRecord(Base, TimestampMixin):
+    __tablename__ = "imported_models"
 
     id: Mapped[str] = mapped_column(String(160), primary_key=True)
-    model_version_id: Mapped[str] = mapped_column(ForeignKey("model_versions.id", ondelete="RESTRICT"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    format: Mapped[str] = mapped_column(String(16), nullable=False)
+    original_name: Mapped[str] = mapped_column(Text, nullable=False)
+    artifact_path: Mapped[str] = mapped_column(Text, nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True, default="ready")
+    class_names_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class InferenceRunRecord(Base, TimestampMixin):
+    __tablename__ = "inference_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "(model_version_id IS NOT NULL AND imported_model_id IS NULL) OR "
+            "(model_version_id IS NULL AND imported_model_id IS NOT NULL)",
+            name="ck_inference_runs_single_model_source",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    model_version_id: Mapped[str | None] = mapped_column(ForeignKey("model_versions.id", ondelete="RESTRICT"), index=True)
+    imported_model_id: Mapped[str | None] = mapped_column(ForeignKey("imported_models.id", ondelete="RESTRICT"), index=True)
     mode: Mapped[str] = mapped_column(String(16), nullable=False)
     runtime: Mapped[str] = mapped_column(String(16), nullable=False)
     config_json: Mapped[str] = mapped_column(Text, nullable=False)

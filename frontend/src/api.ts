@@ -292,7 +292,7 @@ export interface ModelVersionApiResponse {
   metrics: Record<string, number | null>
   status: 'candidate' | 'published' | 'blocked' | 'archived'
   gates: Record<string, boolean>
-  artifacts: Record<string, { path: string; sha256: string; size_bytes: number }>
+  artifacts: Record<string, { path: string; sha256: string; size_bytes: number; exists: boolean }>
   environment: Record<string, string>
   gate_report_path: string | null
   created_at: string
@@ -316,6 +316,7 @@ export interface ModelGateSampleReport {
   pt_count: number
   onnx_count: number
   pairs: ModelGatePredictionPair[]
+  comparison_path?: string | null
 }
 
 export interface ModelGateReport {
@@ -332,7 +333,8 @@ export interface ModelGateReportApiResponse {
 
 export interface InferenceRunApiResponse {
   id: string
-  model_version_id: string
+  model_version_id: string | null
+  imported_model_id: string | null
   mode: 'image' | 'batch' | 'video'
   runtime: 'pt' | 'onnx'
   sources: string[]
@@ -357,11 +359,25 @@ export interface InferenceDetectionApiResponse {
 }
 
 export interface CreateInferenceRunApiRequest {
-  model_version_id: string
+  model_version_id?: string
+  imported_model_id?: string
   mode: 'image' | 'batch' | 'video'
   runtime: 'pt' | 'onnx'
   sources: string[]
   confidence: number
+}
+
+export interface ImportedModelApiResponse {
+  id: string
+  name: string
+  task_type: 'detect' | 'segment'
+  artifact_format: 'pt' | 'onnx'
+  original_name: string
+  artifact: { path: string; sha256: string; size_bytes: number; exists: boolean }
+  status: string
+  class_names: string[]
+  created_at: string
+  updated_at: string
 }
 
 export type AnnotationStatus = 'pending' | 'annotated' | 'reviewed'
@@ -619,13 +635,24 @@ export const api = {
   createInferenceRun: (input: CreateInferenceRunApiRequest) => postJson<InferenceRunApiResponse>('/inference-runs', input),
   uploadInferenceRun: (input: Omit<CreateInferenceRunApiRequest, 'sources'>, files: File[], onProgress?: (percent: number) => void) => {
     const form = new FormData()
-    form.append('model_version_id', input.model_version_id)
+    if (input.model_version_id) form.append('model_version_id', input.model_version_id)
+    if (input.imported_model_id) form.append('imported_model_id', input.imported_model_id)
     form.append('mode', input.mode)
     form.append('runtime', input.runtime)
     form.append('confidence', String(input.confidence))
     files.forEach((file) => form.append('files', file))
     return postFormWithProgress<InferenceRunApiResponse>('/inference-runs/upload', form, onProgress)
   },
+  listImportedModels: () => getJson<ImportedModelApiResponse[]>('/imported-models'),
+  uploadImportedModel: (input: { name: string; task_type: 'detect' | 'segment'; class_names: string[] }, file: File, onProgress?: (percent: number) => void) => {
+    const form = new FormData()
+    form.append('name', input.name)
+    form.append('task_type', input.task_type)
+    form.append('class_names', JSON.stringify(input.class_names))
+    form.append('file', file)
+    return postFormWithProgress<ImportedModelApiResponse>('/imported-models', form, onProgress)
+  },
+  deleteImportedModel: (id: string, deleteArtifact = true) => deleteResource(`/imported-models/${id}?delete_artifact=${deleteArtifact}`),
   refreshInferenceRun: (id: string) => postJson<InferenceRunApiResponse>(`/inference-runs/${id}/refresh`, {}),
   cancelInferenceRun: (id: string) => postJson<InferenceRunApiResponse>(`/inference-runs/${id}/cancel`, {}),
   deleteInferenceRun: (id: string, deleteArtifacts = false) => deleteResource(`/inference-runs/${id}?delete_artifacts=${deleteArtifacts}`),

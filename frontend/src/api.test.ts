@@ -333,6 +333,28 @@ describe('cloud file upload requests', () => {
     expect(request.body?.getAll('files')).toEqual([file])
   })
 
+  it('uploads inference media for an imported test model', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXMLHttpRequest)
+    const file = new File(['image'], 'sample.jpg', { type: 'image/jpeg' })
+
+    await api.uploadInferenceRun({ imported_model_id: 'imported-1', mode: 'image', runtime: 'onnx', confidence: 0.25 }, [file])
+
+    const request = FakeXMLHttpRequest.instance
+    expect(request.body?.get('imported_model_id')).toBe('imported-1')
+    expect(request.body?.get('model_version_id')).toBeNull()
+  })
+
+  it('uploads and lists reusable test models', async () => {
+    vi.stubGlobal('XMLHttpRequest', FakeXMLHttpRequest)
+    const file = new File(['weights'], 'trial.onnx', { type: 'application/octet-stream' })
+
+    await api.uploadImportedModel({ name: 'trial', task_type: 'segment', class_names: ['tag'] }, file)
+
+    expect(FakeXMLHttpRequest.instance.url).toBe('/api/imported-models')
+    expect(FakeXMLHttpRequest.instance.body?.get('file')).toBe(file)
+    expect(FakeXMLHttpRequest.instance.body?.get('class_names')).toBe('["tag"]')
+  })
+
   it('uploads a custom training weight with its run configuration', async () => {
     vi.stubGlobal('XMLHttpRequest', FakeXMLHttpRequest)
     const file = new File(['weights'], 'custom.pt', { type: 'application/octet-stream' })

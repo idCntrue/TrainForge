@@ -49,12 +49,16 @@ function model(gates: Record<string, boolean>): ModelArtifact {
   return {
     id: 'model-1', name: 'test', version: '1.0.0', task: 'segment', status: 'blocked', datasetReleaseId: 'dataset-1', datasetName: 'dataset-1',
     trainingRunId: 'training-1', primaryMetric: 0.9, primaryMetricLabel: 'Mask mAP50', sizeMb: 10, formats: ['PT', 'ONNX'], createdAt: '2026-07-20',
-    baseModel: '-', weightHash: 'hash', environment: '-', gateReportPath: 'report.json', qualityReport,
+    baseModel: '-', weightHash: 'hash', artifacts: {}, environment: '-', gateReportPath: 'report.json', qualityReport,
     gates: Object.entries(gates).map(([key, passed]) => ({ key, label: key, status: passed ? 'passed' : 'blocked', detail: '', advisory: key === 'quality_recommended' })),
   }
 }
 
 describe('model gate diagnostics', () => {
+  it('keeps the failed comparison image path for visual diagnosis', () => {
+    const result = summarizeConsistency({ samples: [{ source: 'sample.jpg', passed: false, pt_count: 1, onnx_count: 1, comparison_path: 'gate/comparison-1.jpg', pairs: [{ class_id: 0, box_iou: 0.9, confidence_delta: 0.01, mask_iou: 0.2, passed: false }] }] })
+    expect(result.samples[0].comparisonPath).toBe('gate/comparison-1.jpg')
+  })
   it('uses Chinese labels and distinguishes advisory checks', () => {
     expect(gateDefinition('consistency')).toMatchObject({ label: 'PT 与 ONNX 推理一致性', advisory: false })
     expect(gateDefinition('quality_recommended')).toMatchObject({ label: '推荐发布质量', advisory: true })

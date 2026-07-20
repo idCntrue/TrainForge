@@ -7,13 +7,14 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
+from scipy.optimize import linear_sum_assignment
 
 from yolo_factory.models.gates import box_iou, file_metadata
 
 SUPPORTED_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".webp"}
 
 
-def _samples(data_yaml: Path, limit: int = 3) -> list[str]:
+def _samples(data_yaml: Path, limit: int = 5) -> list[str]:
     payload = yaml.safe_load(data_yaml.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("data.yaml must contain a mapping")
@@ -44,7 +45,10 @@ def _samples(data_yaml: Path, limit: int = 3) -> list[str]:
     ]
     if not samples:
         raise ValueError(f"dataset split directory contains no supported images: {image_root}")
-    return samples[:limit]
+    if len(samples) <= limit:
+        return samples
+    indices = np.rint(np.linspace(0, len(samples) - 1, limit)).astype(int)
+    return [samples[index] for index in indices]
 
 
 def _normalize(result) -> list[dict]:
@@ -80,15 +84,29 @@ def _mask_iou(left: np.ndarray | None, right: np.ndarray | None) -> float | None
 
 
 def _compare(pt_items: list[dict], onnx_items: list[dict], task_type: str) -> dict:
-    unmatched = list(range(len(onnx_items)))
-    pairs = []
-    for pt_item in pt_items:
-        candidates = [index for index in unmatched if onnx_items[index]["class_id"] == pt_item["class_id"]]
-        if not candidates:
+    assignments: list[tuple[int, int]] = []
+    class_ids = sorted({item["class_id"] for item in pt_items} | {item["class_id"] for item in onnx_items})
+    for class_id in class_ids:
+        pt_indices = [index for index, item in enumerate(pt_items) if item["class_id"] == class_id]
+        onnx_indices = [index for index, item in enumerate(onnx_items) if item["class_id"] == class_id]
+        if not pt_indices or not onnx_indices:
             continue
-        best = max(candidates, key=lambda index: box_iou(pt_item["box"], onnx_items[index]["box"]))
-        onnx_item = onnx_items[best]
+        scores = np.zeros((len(pt_indices), len(onnx_indices)), dtype=np.float64)
+        for row, pt_index in enumerate(pt_indices):
+            for column, onnx_index in enumerate(onnx_indices):
+                box_score = box_iou(pt_items[pt_index]["box"], onnx_items[onnx_index]["box"])
+                mask_score = _mask_iou(pt_items[pt_index]["mask"], onnx_items[onnx_index]["mask"])
+                scores[row, column] = box_score if task_type != "segment" or mask_score is None else (box_score + mask_score) / 2
+        rows, columns = linear_sum_assignment(-scores)
+        assignments.extend((pt_indices[row], onnx_indices[column]) for row, column in zip(rows, columns))
+
+    pairs = []
+    for pt_index, onnx_index in sorted(assignments):
+        pt_item = pt_items[pt_index]
+        onnx_item = onnx_items[onnx_index]
         pair = {
+            "pt_index": pt_index,
+            "onnx_index": onnx_index,
             "class_id": pt_item["class_id"],
             "box_iou": box_iou(pt_item["box"], onnx_item["box"]),
             "confidence_delta": abs(pt_item["confidence"] - onnx_item["confidence"]),
@@ -96,11 +114,40 @@ def _compare(pt_items: list[dict], onnx_items: list[dict], task_type: str) -> di
         if task_type == "segment":
             pair["mask_iou"] = _mask_iou(pt_item["mask"], onnx_item["mask"])
         pair["passed"] = pair["box_iou"] >= 0.8 and pair["confidence_delta"] <= 0.15 and (task_type != "segment" or pair["mask_iou"] is not None and pair["mask_iou"] >= 0.75)
-        if pair["passed"]:
-            unmatched.remove(best)
         pairs.append(pair)
     passed = len(pt_items) == len(onnx_items) == sum(1 for pair in pairs if pair["passed"])
     return {"passed": passed, "pt_count": len(pt_items), "onnx_count": len(onnx_items), "pairs": pairs}
+
+
+def _write_comparison_overlay(
+    source: Path,
+    pt_items: list[dict],
+    onnx_items: list[dict],
+    pairs: list[dict],
+    output: Path,
+) -> None:
+    image = cv2.imread(str(source))
+    if image is None:
+        raise ValueError(f"unable to read gate sample image: {source}")
+    height, width = image.shape[:2]
+    overlay = image.copy()
+    for pair in pairs:
+        if pair["passed"]:
+            continue
+        for item, color in (
+            (pt_items[pair["pt_index"]], (40, 40, 230)),
+            (onnx_items[pair["onnx_index"]], (230, 210, 30)),
+        ):
+            mask = item.get("mask")
+            if mask is not None:
+                resized = cv2.resize(mask.astype(np.float32), (width, height), interpolation=cv2.INTER_NEAREST) > 0.5
+                overlay[resized] = color
+            x1, y1, x2, y2 = (int(round(value)) for value in item["box"])
+            cv2.rectangle(overlay, (x1, y1), (x2, y2), color, 2)
+    rendered = cv2.addWeighted(image, 0.55, overlay, 0.45, 0)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not cv2.imwrite(str(output), rendered):
+        raise ValueError(f"unable to write gate comparison image: {output}")
 
 
 def run(manifest_path: Path) -> int:
@@ -117,10 +164,17 @@ def run(manifest_path: Path) -> int:
     onnx_path = Path(exported).resolve()
     onnx_model = YOLO(str(onnx_path), task=manifest["task_type"])
     sample_reports = []
-    for source in _samples(data_yaml):
+    for sample_index, source in enumerate(_samples(data_yaml), start=1):
         pt_result = pt_model.predict(source=source, imgsz=manifest["image_size"], conf=0.25, max_det=100, device=manifest["device"], verbose=False)[0]
         onnx_result = onnx_model.predict(source=source, imgsz=manifest["image_size"], conf=0.25, max_det=100, device="cpu", verbose=False)[0]
-        sample_reports.append({"source": source, **_compare(_normalize(pt_result), _normalize(onnx_result), manifest["task_type"])})
+        pt_items = _normalize(pt_result)
+        onnx_items = _normalize(onnx_result)
+        sample_report = {"source": source, **_compare(pt_items, onnx_items, manifest["task_type"])}
+        if manifest["task_type"] == "segment" and not sample_report["passed"]:
+            comparison_path = manifest_path.parent / f"comparison-{sample_index}.jpg"
+            _write_comparison_overlay(Path(source), pt_items, onnx_items, sample_report["pairs"], comparison_path)
+            sample_report["comparison_path"] = str(comparison_path.resolve())
+        sample_reports.append(sample_report)
     consistency_passed = bool(sample_reports) and all(report["passed"] for report in sample_reports)
     result = {
         "passed": consistency_passed,

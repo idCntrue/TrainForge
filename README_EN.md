@@ -76,8 +76,8 @@ TrainForge uses one React application with an adaptive information architecture.
 - Pre-training cleanup is restricted to regenerable caches and expired staging files; SQLite, datasets, annotations, weights, and retained training artifacts are protected.
 - cgroup memory limit, current usage, peak usage, and per-run OOM-kill deltas distinguish confirmed OOM failures from unconfirmed external `SIGKILL` events.
 - Test-set evaluation, dataset quality reports, per-class metrics, and best-weight recovery evaluation.
-- PT/ONNX artifact management, opset 17 export, consistency gates, release, and archive states.
-- Asynchronous image, image-batch, and video inference with PT/CUDA or ONNX/CPU.
+- PT/ONNX artifact management with environment-specific paths and hashes, opset 17 export, one-to-one instance consistency gates, failed-sample overlays, release, and archive states.
+- Asynchronous image, image-batch, and video inference with PT/CUDA or ONNX/CPU, using released, candidate/blocked, or reusable uploaded test models.
 
 ## Architecture
 
@@ -183,7 +183,7 @@ npm run build
 5. Publish an immutable dataset release with display names and deterministic splits.
 6. Select the dataset, base weights, device, and resource preset to start training.
 7. Register training output and run PT/ONNX gates in the model registry.
-8. Release a passing model and validate it with image or video inference.
+8. Release a passing model and validate it with image or video inference. Candidate/blocked models and uploaded `.pt`/`.onnx` files can also be tested, but are clearly marked as non-release evidence.
 
 Common CLI commands:
 

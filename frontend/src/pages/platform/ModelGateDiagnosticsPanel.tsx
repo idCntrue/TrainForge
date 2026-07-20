@@ -1,6 +1,7 @@
 import { Alert, Collapse, Progress, Skeleton, Tag } from 'antd'
 import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 
+import { api } from '../../api'
 import type { ModelGateReportApiResponse } from '../../api'
 import type { ModelArtifact } from '../../platform/types'
 import { buildGateDiagnostics, qualityRecommendation } from './modelGateDiagnostics'
@@ -46,6 +47,7 @@ export function ModelGateDiagnosticsPanel({
             <div className="model-gate-sample-heading"><strong>{sample.filename}</strong><span>PT {sample.ptCount} 个 / ONNX {sample.onnxCount} 个</span></div>
             <ul>{sample.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
             <p><Info size={14} />建议先确认是否为同类别相邻目标的配对问题；若配对正确，再检查 ONNX 导出和分割后处理兼容性。</p>
+            {sample.comparisonPath && <div><p>对比图：红色为 PT，青色为 ONNX。</p><a href={api.getArtifactUrl(sample.comparisonPath)} target="_blank" rel="noreferrer"><img src={api.getArtifactUrl(sample.comparisonPath)} alt={`${sample.filename} PT 与 ONNX 对比`} style={{ width: '100%', maxHeight: 320, objectFit: 'contain' }} /></a></div>}
           </article>)}
           {item.key === 'quality_recommended' && <div className="model-gate-recommendation">
             <p>{quality.summary}</p>

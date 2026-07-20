@@ -302,17 +302,38 @@ class ModelGateReportResponse(BaseModel):
     reason: str | None = None
 
 
+class ImportedModelResponse(BaseModel):
+    id: str
+    name: str
+    task_type: str
+    artifact_format: str
+    original_name: str
+    artifact: dict[str, Any]
+    status: str
+    class_names: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
 class InferenceRunCreateRequest(BaseModel):
-    model_version_id: str = Field(min_length=1, max_length=160)
+    model_version_id: str | None = Field(default=None, min_length=1, max_length=160)
+    imported_model_id: str | None = Field(default=None, min_length=1, max_length=160)
     mode: str
     runtime: str
     sources: list[str] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
 
+    @model_validator(mode="after")
+    def validate_model_source(self) -> "InferenceRunCreateRequest":
+        if (self.model_version_id is None) == (self.imported_model_id is None):
+            raise ValueError("exactly one inference model source is required")
+        return self
+
 
 class InferenceRunResponse(BaseModel):
     id: str
-    model_version_id: str
+    model_version_id: str | None
+    imported_model_id: str | None
     mode: str
     runtime: str
     sources: list[str]
