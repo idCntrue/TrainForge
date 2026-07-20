@@ -29,6 +29,7 @@ export function mapModel(model: ModelVersionApiResponse): ModelArtifact {
     sizeMb: Math.round(artifacts.reduce((sum, [, item]) => sum + (item.size_bytes ?? 0), 0) / 1024 / 1024 * 10) / 10,
     formats: artifacts.map(([format]) => format.toUpperCase()), publishedAt: model.published_at ?? undefined, createdAt: model.created_at,
     baseModel: '-', weightHash: model.artifacts.pt?.sha256 ?? '-', environment: Object.entries(model.environment).map(([key, value]) => `${key} ${value}`).join(', ') || '-',
+    artifacts: Object.fromEntries(artifacts.map(([key, item]) => [key, { path: item.path, sha256: item.sha256, sizeBytes: item.size_bytes, exists: item.exists }])),
     gates: Object.entries(model.gates).map(([key, passed]) => {
       const definition = gateDefinition(key)
       return { key, label: definition.label, status: passed ? 'passed' : 'blocked', detail: passed ? '已通过' : '未通过', advisory: definition.advisory }
@@ -58,7 +59,7 @@ export function mapInference(run: InferenceRunApiResponse): InferenceRun {
       mediaPath: item.media_path ?? media[index],
     }))
   return {
-    id: run.id, mode: run.mode, task: 'detect', modelId: run.model_version_id, runtime: run.runtime, status: run.status,
+    id: run.id, mode: run.mode, task: 'detect', modelId: run.model_version_id ?? run.imported_model_id ?? '', runtime: run.runtime, status: run.status,
     confidence: run.confidence, createdAt: run.created_at,
     results,
   }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Button, Descriptions, Drawer, Dropdown, message, Modal, Select, Space, Table } from 'antd'
-import { Archive, Box, CheckCircle2, FileCode2, MoreHorizontal, Play, Send, ShieldCheck } from 'lucide-react'
+import { Button, Descriptions, Drawer, Dropdown, message, Modal, Select, Space, Table, Tooltip } from 'antd'
+import { Archive, Box, CheckCircle2, Copy, FileCode2, MoreHorizontal, Play, Send, ShieldCheck } from 'lucide-react'
 
 import { api } from '../../api'
 import type { ModelGateReportApiResponse } from '../../api'
@@ -79,6 +79,11 @@ export default function ModelsPage() {
     Modal.confirm({ title: cascade ? '级联删除模型和推理历史？' : deleteArtifacts ? '删除模型及制品？' : '删除模型记录？', content: cascade ? '将删除该模型、所有关联推理历史和制品；发布状态也不会保留。' : deleteArtifacts ? 'PT、ONNX 和门禁制品会被永久清理。发布模型必须先归档，存在推理历史时不能删除。' : '仅删除模型记录，制品文件保持不变。', okText: cascade ? '确认级联删除' : deleteArtifacts ? '永久删除' : '删除记录', okButtonProps: { danger: true }, onOk: async () => { try { setBusy(true); await api.deleteModel(selected.id, deleteArtifacts, cascade); setSelected(undefined); await load(); message.success(cascade ? '模型及推理历史已删除' : '模型已删除') } catch (error) { message.error(error instanceof Error ? error.message : '删除模型失败'); throw error } finally { setBusy(false) } } })
   }
   const published = models.filter((model) => model.status === 'published').length
+  const artifactRows = selected ? Object.entries(selected.artifacts).map(([format, artifact]) => ({
+    key: `artifact-${format}`,
+    label: `${format.toUpperCase()} 制品`,
+    children: <div style={{ display: 'grid', gap: 6 }}><span>{artifact.exists ? `${(artifact.sizeBytes / 1024 / 1024).toFixed(1)} MB` : '文件不存在'}</span><Space.Compact style={{ width: '100%' }}><Tooltip title={artifact.path}><code style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '5px 8px', border: '1px solid #d9d9d9' }}>{artifact.path}</code></Tooltip><Button icon={<Copy size={14} />} title="复制实际路径" onClick={() => void navigator.clipboard.writeText(artifact.path).then(() => message.success('路径已复制'))} /></Space.Compact><small>SHA-256：{artifact.sha256 || '-'}</small></div>,
+  })) : []
   return <div className="platform-stack">
     <PageHeader title="模型中心" description="管理训练产物、独立测试证据、PT/ONNX 一致性门禁和发布状态。" />
     <MetricStrip items={[{ label:'当前模型',value:models.length,icon:Box,tone:'blue' },{ label:'已发布',value:published,icon:ShieldCheck,tone:'green' },{ label:'ONNX 就绪',value:models.filter((model) => model.formats.includes('ONNX')).length,icon:FileCode2,tone:'teal' },{ label:'硬门禁通过',value:models.filter((model) => model.gates.every((gate) => gate.advisory || gate.status === 'passed')).length,icon:CheckCircle2,tone:'amber' }]} />
@@ -101,7 +106,7 @@ export default function ModelsPage() {
     ]} />}</section>
     <Drawer className="mobile-fullscreen-drawer" width={isMobile ? '100%' : 680} title={selected ? `${selected.name} v${selected.version}` : ''} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && <Space>{['candidate','blocked'].includes(selected.status) && <Button loading={busy} disabled={busy} icon={<Play size={15}/>} onClick={()=>void action('gates')}>运行门禁</Button>}{selected.status === 'candidate' && selected.gates.every((gate)=>gate.advisory || gate.status==='passed') && <Button loading={busy} disabled={busy} type="primary" icon={<Send size={15}/>} onClick={()=>void action('publish')}>发布</Button>}{selected.status === 'published' && <Button loading={busy} disabled={busy} icon={<Archive size={15}/>} onClick={()=>void action('archive')}>归档</Button>}<Dropdown trigger={['click']} menu={{ items: [...(selected.status !== 'published' ? [{ key:'record',label:'仅删除模型记录' },{ key:'artifacts',label:'删除记录并清理制品',danger:true }] : []),{ key:'cascade',label:'级联删除模型与推理历史',danger:true }], onClick:({key})=>deleteModel(key!=='record',key==='cascade') }}><Button disabled={busy} icon={<MoreHorizontal size={15}/>}>删除与清理</Button></Dropdown></Space>}>
       {selected && <div className="platform-stack compact"><div className="detail-status"><TaskTag task={selected.task} /><StatusTag status={selected.status} /><strong>{selected.primaryMetricLabel} {selected.primaryMetric.toFixed(3)}</strong></div>
-        <Descriptions size="small" column={1} bordered items={[{key:'dataset',label:'数据集版本',children:selected.datasetName},{key:'run',label:'训练运行',children:selected.trainingRunId},{key:'hash',label:'PT SHA-256',children:selected.weightHash},{key:'env',label:'运行环境',children:selected.environment}]} />
+        <Descriptions size="small" column={1} bordered items={[{key:'dataset',label:'数据集版本',children:selected.datasetName},{key:'run',label:'训练运行',children:selected.trainingRunId},{key:'env',label:'运行环境',children:selected.environment},...artifactRows]} />
         <ModelGateDiagnosticsPanel model={selected} report={gateReport} loading={gateReportLoading} />
       </div>}
     </Drawer>

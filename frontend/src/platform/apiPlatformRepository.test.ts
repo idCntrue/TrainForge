@@ -6,12 +6,12 @@ const model = {
   id: 'model-001', name: 'Example Segment', version: '0.1.0', task_type: 'segment', training_run_id: 'training-001',
   dataset_release_id: 'dataset-001', selected_classes: ['door'], class_aliases: {}, metrics: { mask_map50: 0.42 }, status: 'published',
   gates: { training: true, pt: true, onnx: true, consistency: true },
-  artifacts: { pt: { path: 'best.pt', sha256: 'abc', size_bytes: 5_000_000 }, onnx: { path: 'best.onnx', sha256: 'def', size_bytes: 10_000_000 } },
+  artifacts: { pt: { path: 'best.pt', sha256: 'abc', size_bytes: 5_000_000, exists: true }, onnx: { path: 'best.onnx', sha256: 'def', size_bytes: 10_000_000, exists: true } },
   environment: { ultralytics: '8.4.94' }, gate_report_path: 'report.json', created_at: '2026-07-14T00:00:00Z', updated_at: '2026-07-14T00:00:00Z', published_at: '2026-07-14T00:01:00Z', archived_at: null,
 }
 
 const inference = {
-  id: 'inference-001', model_version_id: 'model-001', mode: 'image', runtime: 'pt', sources: ['input.jpg'], confidence: 0.25,
+  id: 'inference-001', model_version_id: 'model-001', imported_model_id: null, mode: 'image', runtime: 'pt', sources: ['input.jpg'], confidence: 0.25,
   status: 'completed', progress: 100, message: 'Completed', output_directory: 'outputs', result_path: 'result.json',
   result: { items: [{ source: 'input.jpg', detections: [{ class_id: 0, class_name: 'door', confidence: 0.92, box: [10, 20, 30, 40], polygon: [0.1, 0.2, 0.3, 0.2, 0.3, 0.4] }], speed: { inference: 12.5 } }], media: ['annotated.jpg'] },
   created_at: '2026-07-14T00:02:00Z', updated_at: '2026-07-14T00:02:01Z', finished_at: '2026-07-14T00:02:01Z',
@@ -41,6 +41,7 @@ describe('API platform repository', () => {
     const models = await repository.listModels({ task: 'segment', status: 'published' })
     expect(models[0]).toMatchObject({ id: 'model-001', task: 'segment', formats: ['PT', 'ONNX'], weightHash: 'abc', primaryMetric: 0.42 })
     expect(models[0].gateReportPath).toBe('report.json')
+    expect(models[0].artifacts.pt).toMatchObject({ path: 'best.pt', exists: true })
     expect(models[0].gates.find((gate) => gate.key === 'consistency')).toMatchObject({ label: 'PT 与 ONNX 推理一致性', advisory: false })
     expect(models[0].gates.every((gate) => gate.status === 'passed')).toBe(true)
   })

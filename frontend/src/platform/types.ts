@@ -93,6 +93,7 @@ export interface ModelArtifact {
   createdAt: string
   baseModel: string
   weightHash: string
+  artifacts: Record<string, { path: string; sha256: string; sizeBytes: number; exists: boolean }>
   environment: string
   gateReportPath?: string
   gates: ReleaseGate[]

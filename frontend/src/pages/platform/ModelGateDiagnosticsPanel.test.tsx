@@ -8,7 +8,7 @@ import { ModelGateDiagnosticsPanel } from './ModelGateDiagnosticsPanel'
 const model: ModelArtifact = {
   id: 'model-1', name: '乘梯标识', version: '1.0.0', task: 'segment', status: 'blocked', datasetReleaseId: 'dataset-1', datasetName: 'dataset-1',
   trainingRunId: 'training-1', primaryMetric: 0.971, primaryMetricLabel: 'Mask mAP50', sizeMb: 10, formats: ['PT', 'ONNX'], createdAt: '2026-07-20',
-  baseModel: '-', weightHash: 'hash', environment: '-', gateReportPath: 'report.json',
+  baseModel: '-', weightHash: 'hash', artifacts: {}, environment: '-', gateReportPath: 'report.json',
   gates: [
     { key: 'training', label: '训练已完成', status: 'passed', detail: '', advisory: false },
     { key: 'consistency', label: 'PT 与 ONNX 推理一致性', status: 'blocked', detail: '', advisory: false },

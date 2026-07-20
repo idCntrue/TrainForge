@@ -20,6 +20,7 @@ export interface ConsistencySampleDiagnostic {
   onnxCount: number
   failedPairs: number
   issues: string[]
+  comparisonPath?: string
 }
 
 export interface ConsistencyDiagnostic {
@@ -71,6 +72,7 @@ function sampleDiagnostic(sample: ModelGateSampleReport): ConsistencySampleDiagn
     onnxCount: sample.onnx_count,
     failedPairs: sample.pairs.filter((pair) => !pair.passed).length,
     issues,
+    comparisonPath: sample.comparison_path ?? undefined,
   }
 }
 
