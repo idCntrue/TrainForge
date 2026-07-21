@@ -25,4 +25,33 @@ describe('TrainingFailurePanel', () => {
     expect(html).toContain('--')
     expect(html).not.toContain('评估已有最佳权重</button>')
   })
+
+  it('shows Windows commit memory and LeASPac evidence when available', () => {
+    const html = renderToStaticMarkup(<TrainingFailurePanel
+      diagnostic={{
+        schema_version: 1, code: 'resource_limit', summary: 'Windows 内存压力导致训练停止',
+        action: '释放提交内存后重试', technical_message: 'exit 0xC0000005', exception_type: null,
+        traceback: null, exit_code: 3221225477, failure_phase: 'training', failure_scope: 'training',
+        last_successful_epoch: 63, total_epochs: 100, occurred_at: '2026-07-22',
+        evidence: ['0xC0000005'], resource_snapshot: {
+          windows_available_commit_bytes: 6 * 1024 ** 3,
+          windows_available_physical_bytes: 3.5 * 1024 ** 3,
+          windows_leaspac_process_count: 30,
+          windows_leaspac_private_bytes: 31 * 1024 ** 3,
+        }, recoverability: null,
+      }}
+      recovery={null}
+      logs={[]}
+      pending={false}
+      onSafeRetry={vi.fn()}
+      onEvaluateBest={vi.fn()}
+    />)
+
+    expect(html).toContain('剩余提交内存')
+    expect(html).toContain('6.00 GiB')
+    expect(html).toContain('可用物理内存')
+    expect(html).toContain('3.50 GiB')
+    expect(html).toContain('LeASPac')
+    expect(html).toContain('30 个 / 31.00 GiB')
+  })
 })

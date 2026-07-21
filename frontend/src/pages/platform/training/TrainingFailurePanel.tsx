@@ -3,6 +3,12 @@ import { RefreshCw, ScanSearch } from 'lucide-react'
 import type { TrainingFailureDiagnostic, TrainingRecoveryOptions } from '../../../api'
 import { failedRunPresentation } from './trainingFailurePresentation'
 
+const GIB = 1024 ** 3
+
+function gib(bytes: number) {
+  return `${(bytes / GIB).toFixed(2)} GiB`
+}
+
 export function TrainingFailurePanel({
   diagnostic, recovery, latestMetric, logs, pending, onSafeRetry, onEvaluateBest,
 }: {
@@ -21,6 +27,26 @@ export function TrainingFailurePanel({
     canSafeRetry: Boolean(recovery?.can_safe_retry),
     canEvaluateBest: Boolean(recovery?.can_evaluate_best),
   })
+  const snapshot = diagnostic.resource_snapshot
+  const availableCommit = snapshot.windows_available_commit_bytes
+  const availablePhysical = snapshot.windows_available_physical_bytes
+  const leaspacCount = snapshot.windows_leaspac_process_count
+  const leaspacPrivate = snapshot.windows_leaspac_private_bytes
+  const windowsMemoryItems = [
+    ...(typeof availableCommit === 'number'
+      ? [{ key: 'commit', label: '剩余提交内存', children: gib(availableCommit) }]
+      : []),
+    ...(typeof availablePhysical === 'number'
+      ? [{ key: 'physical', label: '可用物理内存', children: gib(availablePhysical) }]
+      : []),
+    ...(typeof leaspacCount === 'number'
+      ? [{
+          key: 'leaspac',
+          label: 'LeASPac',
+          children: `${leaspacCount} 个${typeof leaspacPrivate === 'number' ? ` / ${gib(leaspacPrivate)}` : ''}`,
+        }]
+      : []),
+  ]
   return <section className="training-failure-panel" aria-label="训练失败诊断">
     <Alert
       type="error"
@@ -37,6 +63,7 @@ export function TrainingFailurePanel({
       { key: 'time', label: '发生时间', children: diagnostic.occurred_at },
       { key: 'artifacts', label: '保留产物', children: `${recovery?.preserved_artifact_count ?? 0} 项` },
     ]} />
+    {windowsMemoryItems.length > 0 && <Descriptions size="small" column={3} items={windowsMemoryItems} />}
     <Space wrap>
       {recovery?.can_safe_retry && <Button type="primary" loading={pending} icon={<RefreshCw size={15} />} onClick={onSafeRetry}>使用安全配置重试</Button>}
       {recovery?.can_evaluate_best && <Button loading={pending} icon={<ScanSearch size={15} />} onClick={onEvaluateBest}>评估已有最佳权重</Button>}
