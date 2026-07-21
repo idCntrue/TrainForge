@@ -438,7 +438,8 @@ def create_app(
         except Exception as exc:
             app.state.last_training_cleanup = {"errors": (str(exc),)}
         resource_policy.validate_free_disk(root, usage=training_disk_usage)
-        resource_policy.validate_memory_snapshot(training_memory_snapshot())
+        if training_engine == "ultralytics":
+            resource_policy.validate_memory_snapshot(training_memory_snapshot())
     model_repository = ModelVersionRepository(registry)
     imported_model_repository = ImportedModelRepository(registry)
     gate_executor = model_gate_executor or LocalModelGateExecutor(root)
