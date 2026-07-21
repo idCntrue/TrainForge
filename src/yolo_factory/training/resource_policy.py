@@ -50,6 +50,64 @@ class InsufficientTrainingStorage(RuntimeError):
         }
 
 
+class InsufficientTrainingMemory(RuntimeError):
+    """Raised when Windows cannot safely commit memory for a training process."""
+
+    def __init__(
+        self,
+        *,
+        available_commit_gib: float | None,
+        available_physical_gib: float | None,
+        required_commit_gib: int,
+        required_physical_gib: int,
+        leaspac_process_count: int | None,
+        leaspac_private_gib: float | None,
+        failed_checks: tuple[str, ...],
+    ) -> None:
+        self.available_commit_gib = available_commit_gib
+        self.available_physical_gib = available_physical_gib
+        self.required_commit_gib = required_commit_gib
+        self.required_physical_gib = required_physical_gib
+        self.leaspac_process_count = leaspac_process_count
+        self.leaspac_private_gib = leaspac_private_gib
+        self.failed_checks = failed_checks
+        commit = "unknown" if available_commit_gib is None else f"{available_commit_gib:.2f} GiB"
+        physical = "unknown" if available_physical_gib is None else f"{available_physical_gib:.2f} GiB"
+        process_evidence = ""
+        if leaspac_process_count:
+            private = "unknown" if leaspac_private_gib is None else f"{leaspac_private_gib:.2f} GiB"
+            process_evidence = f"; LeASPac.exe {leaspac_process_count} processes use {private}"
+        super().__init__(
+            "Windows training requires at least "
+            f"{required_commit_gib} GiB available commit and {required_physical_gib} GiB available physical memory; "
+            f"currently {commit} commit and {physical} physical are available{process_evidence}"
+        )
+
+    def as_detail(self) -> dict[str, Any]:
+        process_evidence = ""
+        if self.leaspac_process_count:
+            private = "未知" if self.leaspac_private_gib is None else f"{self.leaspac_private_gib:.2f} GiB"
+            process_evidence = f"；检测到 LeASPac.exe {self.leaspac_process_count} 个，共占用 {private}"
+        commit = "未知" if self.available_commit_gib is None else f"{self.available_commit_gib:.2f} GiB"
+        physical = "未知" if self.available_physical_gib is None else f"{self.available_physical_gib:.2f} GiB"
+        return {
+            "code": "insufficient_training_memory",
+            "message": (
+                "Windows 可用内存不足，无法安全启动训练；"
+                f"剩余提交内存 {commit}（至少 {self.required_commit_gib} GiB），"
+                f"可用物理内存 {physical}（至少 {self.required_physical_gib} GiB）"
+                f"{process_evidence}。请关闭占用内存的程序后重试"
+            ),
+            "available_commit_gib": self.available_commit_gib,
+            "available_physical_gib": self.available_physical_gib,
+            "required_commit_gib": self.required_commit_gib,
+            "required_physical_gib": self.required_physical_gib,
+            "leaspac_process_count": self.leaspac_process_count,
+            "leaspac_private_gib": self.leaspac_private_gib,
+            "failed_checks": list(self.failed_checks),
+        }
+
+
 @dataclass(frozen=True)
 class TrainingExecutionPolicy:
     workers: int
@@ -72,6 +130,8 @@ class TrainingResourcePolicy:
     gpu_allowed_devices: tuple[str, ...] = ()
     min_free_disk_gb: int = 8
     min_free_disk_percent: int = 10
+    min_available_commit_gb: int = 8
+    min_available_memory_gb: int = 4
 
     @classmethod
     def from_environment(cls, environment: Mapping[str, str]) -> "TrainingResourcePolicy":
@@ -91,6 +151,12 @@ class TrainingResourcePolicy:
             "min_free_disk_gb": cls._positive_integer(environment, "TRAINING_MIN_FREE_DISK_GB", 8),
             "min_free_disk_percent": cls._positive_integer(
                 environment, "TRAINING_MIN_FREE_DISK_PERCENT", 10
+            ),
+            "min_available_commit_gb": cls._positive_integer(
+                environment, "TRAINING_MIN_AVAILABLE_COMMIT_GB", 8
+            ),
+            "min_available_memory_gb": cls._positive_integer(
+                environment, "TRAINING_MIN_AVAILABLE_MEMORY_GB", 4
             ),
         }
         if values["min_free_disk_percent"] > 100:
@@ -142,6 +208,32 @@ class TrainingResourcePolicy:
         if device.lower().startswith("cpu"):
             return TrainingExecutionPolicy(workers=0, cache=False, cpu_threads=self.cpu_threads)
         return TrainingExecutionPolicy(workers=0, cache=False, cpu_threads=None)
+
+    def validate_memory_snapshot(self, snapshot: Mapping[str, int | None]) -> None:
+        available_commit = snapshot.get("windows_available_commit_bytes")
+        available_physical = snapshot.get("windows_available_physical_bytes")
+        if available_commit is None and available_physical is None:
+            return
+        failed_checks = tuple(
+            check
+            for check, failed in (
+                ("commit", available_commit is not None and available_commit < self.min_available_commit_gb * 1024**3),
+                ("physical", available_physical is not None and available_physical < self.min_available_memory_gb * 1024**3),
+            )
+            if failed
+        )
+        if not failed_checks:
+            return
+        leaspac_private = snapshot.get("windows_leaspac_private_bytes")
+        raise InsufficientTrainingMemory(
+            available_commit_gib=(available_commit / 1024**3 if available_commit is not None else None),
+            available_physical_gib=(available_physical / 1024**3 if available_physical is not None else None),
+            required_commit_gib=self.min_available_commit_gb,
+            required_physical_gib=self.min_available_memory_gb,
+            leaspac_process_count=snapshot.get("windows_leaspac_process_count"),
+            leaspac_private_gib=(leaspac_private / 1024**3 if leaspac_private is not None else None),
+            failed_checks=failed_checks,
+        )
 
     def validate_free_disk(
         self,

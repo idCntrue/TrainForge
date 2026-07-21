@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from yolo_factory.training.resource_policy import (
+    InsufficientTrainingMemory,
     InsufficientTrainingStorage,
     TrainingResourcePolicy,
     UnsafeTrainingConfiguration,
@@ -21,6 +22,8 @@ def test_loads_safe_defaults_from_empty_environment() -> None:
     assert policy.max_image_size == 640
     assert policy.min_free_disk_gb == 8
     assert policy.min_free_disk_percent == 10
+    assert policy.min_available_commit_gb == 8
+    assert policy.min_available_memory_gb == 4
 
 
 def test_loads_overrides_and_rejects_invalid_environment() -> None:
@@ -31,6 +34,8 @@ def test_loads_overrides_and_rejects_invalid_environment() -> None:
         "CPU_TRAINING_MAX_IMAGE_SIZE": "512",
         "TRAINING_MIN_FREE_DISK_GB": "8",
         "TRAINING_MIN_FREE_DISK_PERCENT": "15",
+        "TRAINING_MIN_AVAILABLE_COMMIT_GB": "12",
+        "TRAINING_MIN_AVAILABLE_MEMORY_GB": "6",
     })
 
     assert policy.cpu_threads == 2
@@ -39,6 +44,8 @@ def test_loads_overrides_and_rejects_invalid_environment() -> None:
     assert policy.max_image_size == 512
     assert policy.min_free_disk_gb == 8
     assert policy.min_free_disk_percent == 15
+    assert policy.min_available_commit_gb == 12
+    assert policy.min_available_memory_gb == 6
 
     with pytest.raises(ValueError, match="CPU_TRAINING_THREADS"):
         TrainingResourcePolicy.from_environment({"CPU_TRAINING_THREADS": "zero"})
@@ -46,6 +53,8 @@ def test_loads_overrides_and_rejects_invalid_environment() -> None:
         TrainingResourcePolicy.from_environment({"CPU_SEGMENT_MAX_BATCH": "0"})
     with pytest.raises(ValueError, match="TRAINING_MIN_FREE_DISK_PERCENT"):
         TrainingResourcePolicy.from_environment({"TRAINING_MIN_FREE_DISK_PERCENT": "101"})
+    with pytest.raises(ValueError, match="TRAINING_MIN_AVAILABLE_COMMIT_GB"):
+        TrainingResourcePolicy.from_environment({"TRAINING_MIN_AVAILABLE_COMMIT_GB": "zero"})
 
 
 def test_rejects_unsafe_cpu_parameters_and_accepts_bounded_gpu_parameters() -> None:
@@ -129,3 +138,41 @@ def test_disk_error_preserves_two_decimal_places() -> None:
 
     assert "9.96 GiB" in str(error.value)
     assert error.value.as_detail()["free_gib"] == 9.96
+
+
+def test_rejects_low_windows_commit_memory_with_process_evidence() -> None:
+    policy = TrainingResourcePolicy.from_environment({})
+
+    with pytest.raises(InsufficientTrainingMemory) as captured:
+        policy.validate_memory_snapshot({
+            "windows_available_commit_bytes": 3 * GIB,
+            "windows_available_physical_bytes": 5 * GIB,
+            "windows_leaspac_process_count": 30,
+            "windows_leaspac_private_bytes": 31 * GIB,
+        })
+
+    detail = captured.value.as_detail()
+    assert detail["code"] == "insufficient_training_memory"
+    assert detail["failed_checks"] == ["commit"]
+    assert detail["leaspac_process_count"] == 30
+    assert detail["leaspac_private_gib"] == 31.0
+    assert "LeASPac.exe 30 个" in detail["message"]
+
+
+def test_rejects_low_windows_physical_memory_and_accepts_linux_snapshot() -> None:
+    policy = TrainingResourcePolicy.from_environment({})
+
+    with pytest.raises(InsufficientTrainingMemory) as captured:
+        policy.validate_memory_snapshot({
+            "windows_available_commit_bytes": 20 * GIB,
+            "windows_available_physical_bytes": 2 * GIB,
+            "windows_leaspac_process_count": 0,
+            "windows_leaspac_private_bytes": 0,
+        })
+    assert captured.value.failed_checks == ("physical",)
+
+    policy.validate_memory_snapshot({"cgroup_memory_current_bytes": 2 * GIB})
+    policy.validate_memory_snapshot({
+        "windows_available_commit_bytes": None,
+        "windows_available_physical_bytes": None,
+    })
