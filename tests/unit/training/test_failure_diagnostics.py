@@ -98,3 +98,24 @@ def test_known_exit_code_has_priority_over_vague_log_keyword() -> None:
     diagnostic = _classify(exit_code=137, log_tail=["old warning: no space left on device"])
 
     assert diagnostic.code == "resource_limit"
+
+
+def test_classifies_signed_and_unsigned_windows_access_violation_as_memory_pressure() -> None:
+    for exit_code in (3221225477, -1073741819):
+        diagnostic = _classify(exit_code=exit_code, last_successful_epoch=63)
+
+        assert diagnostic.code == "resource_limit"
+        assert diagnostic.last_successful_epoch == 63
+        assert "Windows" in diagnostic.summary
+        assert "OpenCV" in diagnostic.action
+        assert "提交内存" in diagnostic.action
+        assert any("0xC0000005" in evidence for evidence in diagnostic.evidence)
+
+
+def test_classifies_runtime_memory_guard_as_resource_limit() -> None:
+    diagnostic = _classify(
+        message="TrainingMemoryPressure: Windows 内存压力过高，训练已在下一轮开始前安全停止"
+    )
+
+    assert diagnostic.code == "resource_limit"
+    assert "提交内存" in diagnostic.action

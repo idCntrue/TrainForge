@@ -69,12 +69,20 @@ def classify_training_failure(
     combined = "\n".join([message, *log_tail]).lower()
     evidence: list[str] = []
     snapshot = resource_snapshot or {}
+    windows_memory_failure = False
 
     if exit_code in {-9, 137}:
         code = "resource_limit"
         evidence.append(f"process exit code {exit_code} indicates an external SIGKILL")
         if (snapshot.get("cgroup_oom_kill_delta") or 0) > 0:
             evidence.append("confirmed cgroup OOM kill during this training run")
+    elif exit_code in {3221225477, -1073741819}:
+        code = "resource_limit"
+        windows_memory_failure = True
+        evidence.append(
+            "Windows native access violation 0xC0000005; cv2.pyd commonly crashes "
+            "when commit memory is exhausted"
+        )
     else:
         signatures = (
             ("disk_full", ("no space left on device", "errno 28")),
@@ -94,6 +102,10 @@ def classify_training_failure(
         if code == "runner_failed" and re.search(r"\bimporterror\s*:", combined):
             code = "dependency_import"
             evidence.append("failure text contains an ImportError exception")
+        if "trainingmemorypressure" in combined:
+            code = "resource_limit"
+            windows_memory_failure = True
+            evidence.append("training stopped by the Windows memory guard before the next epoch")
 
     scope = "post_training" if failure_phase in {"evaluation", "evaluating", "export", "exporting", "verification", "verifying"} else "training"
     can_evaluate = scope == "post_training" and bool(best_weight_path)
@@ -104,7 +116,11 @@ def classify_training_failure(
         preserved_artifact_count=preserved_artifact_count,
         reason=("可使用已保存的最佳权重继续独立评估" if can_evaluate else "需要重新运行训练"),
     )
-    summary, action = _PRESENTATION[code]
+    if windows_memory_failure:
+        summary = "Windows 内存压力导致训练安全停止"
+        action = "请释放提交内存后重试；若日志包含 cv2.pyd，请关闭高内存程序并保持 OpenCV/DataLoader worker 为 0"
+    else:
+        summary, action = _PRESENTATION[code]
     return TrainingFailureDiagnostic(
         schema_version=1,
         code=code,
