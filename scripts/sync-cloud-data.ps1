@@ -196,7 +196,7 @@ raise SystemExit(0 if result == 'ok' else 2)
     if (Test-Path -LiteralPath $localBackup) { Write-Host "Local database backup: $localBackup" }
 }
 catch {
-    Write-Error $_
+    Write-Error $_ -ErrorAction Continue
     if ($databaseReplaced -and (Test-Path -LiteralPath $localBackup -PathType Leaf)) {
         Copy-Item -LiteralPath $localBackup -Destination $localDatabase -Force
         $databaseReplaced = $false

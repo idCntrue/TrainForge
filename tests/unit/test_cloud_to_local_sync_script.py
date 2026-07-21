@@ -62,6 +62,15 @@ def test_sync_script_has_failure_recovery_and_dry_run() -> None:
     assert "Retaining staging directory" in script
 
 
+def test_sync_script_reports_errors_without_skipping_database_rollback() -> None:
+    script = _script()
+
+    report = script.index('Write-Error $_ -ErrorAction Continue')
+    restore = script.index('Copy-Item -LiteralPath $localBackup -Destination $localDatabase -Force')
+
+    assert report < restore
+
+
 def test_sync_script_only_blocks_missing_training_ready_paths() -> None:
     script = _script()
 
