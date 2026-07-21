@@ -11,9 +11,36 @@ from yolo_factory.training.evaluation import normalize_test_metrics, write_test_
 from yolo_factory.training.quality_report import build_quality_report
 from yolo_factory.datasets.quality import analyze_dataset_quality
 from yolo_factory.datasets.validation import IMAGE_EXTENSIONS
+from yolo_factory.training.resource_policy import (
+    InsufficientTrainingMemory,
+    TrainingResourcePolicy,
+)
+from yolo_factory.training.resource_snapshot import read_training_memory_snapshot
 
 
 EventEmitter = Callable[[dict], None]
+
+
+class TrainingMemoryPressure(RuntimeError):
+    """Raised between epochs before Windows memory pressure reaches native code."""
+
+
+def ensure_training_memory_available(
+    policy: TrainingResourcePolicy,
+    snapshot: dict[str, int | None],
+) -> None:
+    try:
+        policy.validate_memory_snapshot(snapshot)
+    except InsufficientTrainingMemory as exc:
+        detail = exc.as_detail()
+        commit = detail.get("available_commit_gib")
+        physical = detail.get("available_physical_gib")
+        commit_label = "未知" if commit is None else f"{commit:.2f} GiB"
+        physical_label = "未知" if physical is None else f"{physical:.2f} GiB"
+        raise TrainingMemoryPressure(
+            "Windows 内存压力过高，训练已在下一轮开始前安全停止："
+            f"剩余提交内存 {commit_label}，可用物理内存 {physical_label}"
+        ) from exc
 
 
 def _write_report(path: Path, payload: dict) -> None:
@@ -186,6 +213,11 @@ def run_ultralytics(
         return {"metrics": report["overall"], "test_metrics": report, "quality_report": quality_report, "artifacts": artifacts, "data_yaml": str(data_yaml)}
 
     previous_elapsed = 0.0
+    resource_policy = TrainingResourcePolicy.from_environment(os.environ)
+
+    def on_train_epoch_start(trainer) -> None:
+        del trainer
+        ensure_training_memory_available(resource_policy, read_training_memory_snapshot())
 
     def on_fit_epoch_end(trainer) -> None:
         nonlocal previous_elapsed
@@ -209,6 +241,7 @@ def run_ultralytics(
             "eta_seconds": eta_seconds,
         })
 
+    model.add_callback("on_train_epoch_start", on_train_epoch_start)
     model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
     train_options = {
         "data": str(data_yaml),

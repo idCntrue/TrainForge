@@ -1,8 +1,52 @@
 from pathlib import Path
 
+import pytest
 import yaml
 
-from yolo_factory.training.ultralytics_adapter import prepare_dataset_view, run_ultralytics
+from yolo_factory.training.resource_policy import TrainingResourcePolicy
+from yolo_factory.training.ultralytics_adapter import (
+    TrainingMemoryPressure,
+    ensure_training_memory_available,
+    prepare_dataset_view,
+    run_ultralytics,
+)
+
+
+GIB = 1024 ** 3
+
+
+def test_rejects_low_windows_memory_before_next_epoch() -> None:
+    policy = TrainingResourcePolicy()
+
+    with pytest.raises(TrainingMemoryPressure, match="提交内存"):
+        ensure_training_memory_available(policy, {
+            "windows_available_commit_bytes": 3 * GIB,
+            "windows_available_physical_bytes": 5 * GIB,
+            "windows_leaspac_process_count": 30,
+            "windows_leaspac_private_bytes": 31 * GIB,
+        })
+
+
+def test_accepts_safe_windows_memory_before_next_epoch() -> None:
+    ensure_training_memory_available(TrainingResourcePolicy(), {
+        "windows_available_commit_bytes": 12 * GIB,
+        "windows_available_physical_bytes": 6 * GIB,
+    })
+
+
+def test_accepts_linux_memory_snapshot_before_next_epoch() -> None:
+    ensure_training_memory_available(TrainingResourcePolicy(), {
+        "memory_current_bytes": 2 * GIB,
+        "memory_limit_bytes": 8 * GIB,
+    })
+
+
+def test_reports_memory_pressure_when_one_windows_metric_is_unavailable() -> None:
+    with pytest.raises(TrainingMemoryPressure, match="可用物理内存 未知"):
+        ensure_training_memory_available(TrainingResourcePolicy(), {
+            "windows_available_commit_bytes": 3 * GIB,
+            "windows_available_physical_bytes": None,
+        })
 
 
 def _dataset(root: Path) -> Path:
