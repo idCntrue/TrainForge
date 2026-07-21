@@ -197,6 +197,29 @@ def test_rejects_low_disk_before_creating_run(tmp_path: Path) -> None:
     _assert_no_training_side_effects(app, storage)
 
 
+def test_rejects_low_windows_memory_before_creating_run(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    app = create_app(
+        storage_root=storage,
+        training_engine="simulation",
+        training_memory_snapshot=lambda: {
+            "windows_available_commit_bytes": 2 * 1024**3,
+            "windows_available_physical_bytes": 6 * 1024**3,
+            "windows_leaspac_process_count": 30,
+            "windows_leaspac_private_bytes": 31 * 1024**3,
+        },
+    )
+
+    with TestClient(app) as client:
+        response = client.post("/api/training-runs", json=_request())
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "insufficient_training_memory"
+    assert response.json()["detail"]["failed_checks"] == ["commit"]
+    assert response.json()["detail"]["leaspac_process_count"] == 30
+    _assert_no_training_side_effects(app, storage)
+
+
 def test_training_preflight_cleans_before_measuring_disk(tmp_path: Path) -> None:
     storage = _storage(tmp_path)
     calls: list[str] = []

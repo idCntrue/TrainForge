@@ -13,7 +13,7 @@ from yolo_factory.training.executor import ActiveTrainingRunError, LocalTraining
 from yolo_factory.training.manifest import write_manifest
 from yolo_factory.training.models import TrainingRunSpec
 from yolo_factory.training.repository import TrainingRunRepository
-from yolo_factory.training.resource_policy import TrainingResourcePolicy
+from yolo_factory.training.resource_policy import InsufficientTrainingMemory, TrainingResourcePolicy
 
 
 def _repository(path: Path) -> TrainingRunRepository:
@@ -81,7 +81,7 @@ def test_start_persists_execution_policy_and_isolates_thread_environment(
     monkeypatch.setattr(executor_module.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(
         executor_module,
-        "read_cgroup_memory_snapshot",
+        "read_training_memory_snapshot",
         lambda: call_order.append("snapshot") or {"cgroup_memory_oom_kill": 0},
     )
     before = dict(os.environ)
@@ -105,6 +105,36 @@ def test_start_persists_execution_policy_and_isolates_thread_environment(
     }
     assert dict(os.environ) == before
     assert call_order[:2] == ["snapshot", "popen"]
+
+
+def test_start_rejects_low_windows_memory_before_creating_run_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    repository.create(_spec(), run_id="run-low-memory")
+    storage = tmp_path / "storage"
+    popen_called = False
+
+    def fail_popen(*args, **kwargs):
+        nonlocal popen_called
+        popen_called = True
+        raise AssertionError("runner must not start")
+
+    monkeypatch.setattr(executor_module.subprocess, "Popen", fail_popen)
+    monkeypatch.setattr(executor_module, "read_training_memory_snapshot", lambda: {
+        "windows_available_commit_bytes": 2 * 1024**3,
+        "windows_available_physical_bytes": 6 * 1024**3,
+        "windows_leaspac_process_count": 12,
+        "windows_leaspac_private_bytes": 10 * 1024**3,
+    })
+    executor = LocalTrainingExecutor(repository, storage)
+
+    with pytest.raises(InsufficientTrainingMemory):
+        executor.start("run-low-memory")
+
+    assert popen_called is False
+    assert not (storage / "training-runs" / "run-low-memory").exists()
+    assert repository.get_required("run-low-memory").status == "queued"
 
 
 def test_simulated_subprocess_completes_release_gates(tmp_path: Path) -> None:

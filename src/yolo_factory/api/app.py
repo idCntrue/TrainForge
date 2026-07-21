@@ -73,10 +73,12 @@ from yolo_factory.training.models import TrainingRun, TrainingRunSpec
 from yolo_factory.training.repository import ActiveTrainingRunDeletion, InvalidTrainingTransition, ReferencedTrainingRunDeletion, TrainingRunRepository
 from yolo_factory.training.details import build_training_details
 from yolo_factory.training.resource_policy import (
+    InsufficientTrainingMemory,
     InsufficientTrainingStorage,
     TrainingResourcePolicy,
     UnsafeTrainingConfiguration,
 )
+from yolo_factory.training.resource_snapshot import read_training_memory_snapshot
 from yolo_factory.training.storage_cleanup import cleanup_training_storage
 from yolo_factory.training.recovery import plan_safe_retry
 from yolo_factory.training.presets import resolve_training_preset
@@ -377,6 +379,7 @@ def create_app(
     training_resource_policy: TrainingResourcePolicy | None = None,
     training_disk_usage=shutil.disk_usage,
     training_storage_cleanup=cleanup_training_storage,
+    training_memory_snapshot=read_training_memory_snapshot,
     imported_model_inspector=inspect_imported_model,
 ) -> FastAPI:
     root = (storage_root or _default_storage_root()).resolve()
@@ -435,6 +438,7 @@ def create_app(
         except Exception as exc:
             app.state.last_training_cleanup = {"errors": (str(exc),)}
         resource_policy.validate_free_disk(root, usage=training_disk_usage)
+        resource_policy.validate_memory_snapshot(training_memory_snapshot())
     model_repository = ModelVersionRepository(registry)
     imported_model_repository = ImportedModelRepository(registry)
     gate_executor = model_gate_executor or LocalModelGateExecutor(root)
@@ -801,6 +805,8 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except InsufficientTrainingStorage as exc:
             raise HTTPException(status_code=409, detail=exc.as_detail()) from exc
+        except InsufficientTrainingMemory as exc:
+            raise HTTPException(status_code=409, detail=exc.as_detail()) from exc
         run = training_repository.create(
             TrainingRunSpec(
                 name=req.name,
@@ -969,6 +975,8 @@ def create_app(
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except InsufficientTrainingStorage as exc:
             raise HTTPException(status_code=409, detail=exc.as_detail()) from exc
+        except InsufficientTrainingMemory as exc:
+            raise HTTPException(status_code=409, detail=exc.as_detail()) from exc
         with session_scope(registry) as session:
             release = session.get(DatasetRelease, source.spec.dataset_release_id)
             if release is None or release.status != "published":
@@ -1035,6 +1043,8 @@ def create_app(
         except UnsafeTrainingConfiguration as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         except InsufficientTrainingStorage as exc:
+            raise HTTPException(status_code=409, detail=exc.as_detail()) from exc
+        except InsufficientTrainingMemory as exc:
             raise HTTPException(status_code=409, detail=exc.as_detail()) from exc
         with session_scope(registry) as session:
             release = session.get(DatasetRelease, source.spec.dataset_release_id)

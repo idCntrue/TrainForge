@@ -13,7 +13,7 @@ from yolo_factory.training.manifest import write_manifest
 from yolo_factory.training.models import TrainingRun
 from yolo_factory.training.repository import InvalidTrainingTransition, TrainingRunRepository
 from yolo_factory.training.resource_policy import TrainingResourcePolicy
-from yolo_factory.training.resource_snapshot import read_cgroup_memory_snapshot
+from yolo_factory.training.resource_snapshot import read_training_memory_snapshot
 from yolo_factory.training.failure_diagnostics import classify_training_failure
 
 
@@ -74,6 +74,9 @@ class LocalTrainingExecutor:
         run = self._repository.get_required(run_id)
         if run.status != "queued":
             raise InvalidTrainingTransition(f"{run.status} -> running")
+        initial_resources = read_training_memory_snapshot()
+        if self._engine == "ultralytics":
+            self._resource_policy.validate_memory_snapshot(initial_resources)
         run_directory = self._storage_root / "training-runs" / run_id
         run_directory.mkdir(parents=True, exist_ok=False)
         execution = self._resource_policy.execution_policy(run.spec.device)
@@ -98,7 +101,6 @@ class LocalTrainingExecutor:
                 "OPENBLAS_NUM_THREADS": thread_count,
                 "NUMEXPR_NUM_THREADS": thread_count,
             })
-        initial_resources = read_cgroup_memory_snapshot()
         process = subprocess.Popen(
             [self._python, "-m", "yolo_factory.training.runner", "--manifest", str(manifest_path)],
             stdout=log_stream,
@@ -222,7 +224,7 @@ class LocalTrainingExecutor:
                 best_weight_path = None
         preserved = sum(1 for path in run_directory.rglob("*") if path.is_file() and not path.name.endswith(".tmp"))
         disk = shutil.disk_usage(run_directory)
-        resource_snapshot = read_cgroup_memory_snapshot()
+        resource_snapshot = read_training_memory_snapshot()
         process_metadata = _read_json(run_directory / "process.json")
         initial_oom_kill = (process_metadata.get("initial_resources") or {}).get("cgroup_memory_oom_kill")
         current_oom_kill = resource_snapshot.get("cgroup_memory_oom_kill")
