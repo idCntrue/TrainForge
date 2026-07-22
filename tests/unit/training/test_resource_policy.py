@@ -23,6 +23,7 @@ def test_loads_safe_defaults_from_empty_environment() -> None:
     assert policy.min_free_disk_gb == 8
     assert policy.min_free_disk_percent == 10
     assert policy.min_available_commit_gb == 8
+    assert policy.runtime_min_available_commit_gb == 4
     assert policy.min_available_memory_gb == 4
 
 
@@ -35,6 +36,7 @@ def test_loads_overrides_and_rejects_invalid_environment() -> None:
         "TRAINING_MIN_FREE_DISK_GB": "8",
         "TRAINING_MIN_FREE_DISK_PERCENT": "15",
         "TRAINING_MIN_AVAILABLE_COMMIT_GB": "12",
+        "TRAINING_RUNTIME_MIN_AVAILABLE_COMMIT_GB": "5",
         "TRAINING_MIN_AVAILABLE_MEMORY_GB": "6",
     })
 
@@ -45,6 +47,7 @@ def test_loads_overrides_and_rejects_invalid_environment() -> None:
     assert policy.min_free_disk_gb == 8
     assert policy.min_free_disk_percent == 15
     assert policy.min_available_commit_gb == 12
+    assert policy.runtime_min_available_commit_gb == 5
     assert policy.min_available_memory_gb == 6
 
     with pytest.raises(ValueError, match="CPU_TRAINING_THREADS"):
@@ -55,6 +58,10 @@ def test_loads_overrides_and_rejects_invalid_environment() -> None:
         TrainingResourcePolicy.from_environment({"TRAINING_MIN_FREE_DISK_PERCENT": "101"})
     with pytest.raises(ValueError, match="TRAINING_MIN_AVAILABLE_COMMIT_GB"):
         TrainingResourcePolicy.from_environment({"TRAINING_MIN_AVAILABLE_COMMIT_GB": "zero"})
+    with pytest.raises(ValueError, match="TRAINING_RUNTIME_MIN_AVAILABLE_COMMIT_GB"):
+        TrainingResourcePolicy.from_environment({"TRAINING_RUNTIME_MIN_AVAILABLE_COMMIT_GB": "0"})
+    with pytest.raises(ValueError, match="must not exceed"):
+        TrainingResourcePolicy.from_environment({"TRAINING_RUNTIME_MIN_AVAILABLE_COMMIT_GB": "9"})
 
 
 def test_rejects_unsafe_cpu_parameters_and_accepts_bounded_gpu_parameters() -> None:
@@ -181,9 +188,20 @@ def test_rejects_low_windows_physical_memory_and_accepts_linux_snapshot() -> Non
 def test_runtime_memory_gate_allows_expected_physical_usage_when_commit_is_safe() -> None:
     policy = TrainingResourcePolicy()
 
+    with pytest.raises(InsufficientTrainingMemory):
+        policy.validate_memory_snapshot({
+            "windows_available_commit_bytes": int(7.96 * GIB),
+            "windows_available_physical_bytes": 8 * GIB,
+        })
+
     policy.validate_runtime_memory_snapshot({
         "windows_available_commit_bytes": 12 * GIB,
         "windows_available_physical_bytes": int(3.49 * GIB),
+    })
+
+    policy.validate_runtime_memory_snapshot({
+        "windows_available_commit_bytes": int(7.96 * GIB),
+        "windows_available_physical_bytes": int(2.15 * GIB),
     })
 
 
@@ -192,8 +210,9 @@ def test_runtime_memory_gate_still_rejects_low_commit_memory() -> None:
 
     with pytest.raises(InsufficientTrainingMemory) as error:
         policy.validate_runtime_memory_snapshot({
-            "windows_available_commit_bytes": 3 * GIB,
+            "windows_available_commit_bytes": int(3.99 * GIB),
             "windows_available_physical_bytes": 6 * GIB,
         })
 
     assert error.value.failed_checks == ("commit",)
+    assert error.value.required_commit_gib == 4

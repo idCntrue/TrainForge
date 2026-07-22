@@ -131,6 +131,7 @@ class TrainingResourcePolicy:
     min_free_disk_gb: int = 8
     min_free_disk_percent: int = 10
     min_available_commit_gb: int = 8
+    runtime_min_available_commit_gb: int = 4
     min_available_memory_gb: int = 4
 
     @classmethod
@@ -155,12 +156,20 @@ class TrainingResourcePolicy:
             "min_available_commit_gb": cls._positive_integer(
                 environment, "TRAINING_MIN_AVAILABLE_COMMIT_GB", 8
             ),
+            "runtime_min_available_commit_gb": cls._positive_integer(
+                environment, "TRAINING_RUNTIME_MIN_AVAILABLE_COMMIT_GB", 4
+            ),
             "min_available_memory_gb": cls._positive_integer(
                 environment, "TRAINING_MIN_AVAILABLE_MEMORY_GB", 4
             ),
         }
         if values["min_free_disk_percent"] > 100:
             raise ValueError("TRAINING_MIN_FREE_DISK_PERCENT must be at most 100")
+        if values["runtime_min_available_commit_gb"] > values["min_available_commit_gb"]:
+            raise ValueError(
+                "TRAINING_RUNTIME_MIN_AVAILABLE_COMMIT_GB must not exceed "
+                "TRAINING_MIN_AVAILABLE_COMMIT_GB"
+            )
         return cls(**values)
 
     @staticmethod
@@ -210,15 +219,24 @@ class TrainingResourcePolicy:
         return TrainingExecutionPolicy(workers=0, cache=False, cpu_threads=None)
 
     def validate_memory_snapshot(self, snapshot: Mapping[str, int | None]) -> None:
-        self._validate_memory_snapshot(snapshot, check_physical=True)
+        self._validate_memory_snapshot(
+            snapshot,
+            required_commit_gb=self.min_available_commit_gb,
+            check_physical=True,
+        )
 
     def validate_runtime_memory_snapshot(self, snapshot: Mapping[str, int | None]) -> None:
-        self._validate_memory_snapshot(snapshot, check_physical=False)
+        self._validate_memory_snapshot(
+            snapshot,
+            required_commit_gb=self.runtime_min_available_commit_gb,
+            check_physical=False,
+        )
 
     def _validate_memory_snapshot(
         self,
         snapshot: Mapping[str, int | None],
         *,
+        required_commit_gb: int,
         check_physical: bool,
     ) -> None:
         available_commit = snapshot.get("windows_available_commit_bytes")
@@ -228,7 +246,7 @@ class TrainingResourcePolicy:
         failed_checks = tuple(
             check
             for check, failed in (
-                ("commit", available_commit is not None and available_commit < self.min_available_commit_gb * 1024**3),
+                ("commit", available_commit is not None and available_commit < required_commit_gb * 1024**3),
                 (
                     "physical",
                     check_physical
@@ -244,7 +262,7 @@ class TrainingResourcePolicy:
         raise InsufficientTrainingMemory(
             available_commit_gib=(available_commit / 1024**3 if available_commit is not None else None),
             available_physical_gib=(available_physical / 1024**3 if available_physical is not None else None),
-            required_commit_gib=self.min_available_commit_gb,
+            required_commit_gib=required_commit_gb,
             required_physical_gib=self.min_available_memory_gb,
             leaspac_process_count=snapshot.get("windows_leaspac_process_count"),
             leaspac_private_gib=(leaspac_private / 1024**3 if leaspac_private is not None else None),
