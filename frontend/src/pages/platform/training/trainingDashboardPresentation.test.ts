@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { TrainingArtifactApiResponse, TrainingEpochMetrics } from '../../../api'
 import {
   artifactGroups,
+  filterLogLines,
   defaultMetricMode,
+  latestFiniteMetric,
+  lossCards,
   lossTrend,
+  metricCards,
   resultImageGroups,
   splitPresentation,
 } from './trainingDashboardPresentation'
@@ -54,6 +58,55 @@ describe('training dashboard presentation', () => {
       { epoch: 2, train_box_loss: 0.25 },
       { epoch: 3, train_box_loss: 0.4 },
     ], 'train_box_loss').state).toBe('worsening')
+  })
+
+  it('selects the newest finite metric without fabricating missing values', () => {
+    const history: TrainingEpochMetrics[] = [
+      { epoch: 1, map50_mask: 0.31 },
+      { epoch: 2, map50_mask: Number.NaN },
+      { epoch: 3, map50_mask: 0.42 },
+    ]
+    expect(latestFiniteMetric(history, 'map50_mask')).toBe(0.42)
+    expect(latestFiniteMetric(history, 'missing')).toBeNull()
+  })
+
+  it('builds task-specific quality and loss cards from real telemetry', () => {
+    const history: TrainingEpochMetrics[] = [{
+      epoch: 1,
+      map50_mask: 0.42,
+      map50_95_mask: 0.21,
+      map50_box: 0.55,
+      map50_95_box: 0.32,
+      train_box_loss: 1.1,
+      train_seg_loss: 0.9,
+      train_cls_loss: 0.4,
+      train_dfl_loss: 0.7,
+    }]
+    expect(metricCards('segment', history).map((item) => item.key)).toEqual([
+      'map50_mask', 'map50_95_mask', 'map50_box', 'map50_95_box',
+    ])
+    expect(metricCards('detect', history).map((item) => item.key)).toEqual([
+      'map50_box', 'map50_95_box',
+    ])
+    expect(lossCards('segment', history).map((item) => item.key)).toEqual([
+      'train_box_loss', 'train_seg_loss', 'train_cls_loss', 'train_dfl_loss',
+    ])
+  })
+
+  it('classifies and filters logs while preserving original line numbers', () => {
+    const lines = [
+      'Ultralytics training started',
+      'Epoch 3/200 GPU_mem 7.2G',
+      'WARNING low worker count',
+      'Traceback: CUDA out of memory',
+    ]
+    expect(filterLogLines(lines, { mode: 'diagnostic', level: 'all', query: '' })).toEqual([
+      { number: 3, text: lines[2], level: 'warning' },
+      { number: 4, text: lines[3], level: 'error' },
+    ])
+    expect(filterLogLines(lines, { mode: 'live', level: 'epoch', query: 'gpu' })).toEqual([
+      { number: 2, text: lines[1], level: 'epoch' },
+    ])
   })
 
   it('groups result images by user purpose', () => {
