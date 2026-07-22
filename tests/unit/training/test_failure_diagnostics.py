@@ -119,3 +119,15 @@ def test_classifies_runtime_memory_guard_as_resource_limit() -> None:
 
     assert diagnostic.code == "resource_limit"
     assert "提交内存" in diagnostic.action
+
+
+def test_classifies_runtime_memory_guard_from_exception_type() -> None:
+    diagnostic = _classify(
+        message="Windows 内存压力过高，训练已在下一轮开始前安全停止",
+        exception_type="TrainingMemoryPressure",
+    )
+
+    assert diagnostic.code == "resource_limit"
+    assert "Windows" in diagnostic.summary
+    assert "提交内存" in diagnostic.action
+    assert any("memory guard" in evidence for evidence in diagnostic.evidence)

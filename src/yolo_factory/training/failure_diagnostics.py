@@ -102,7 +102,7 @@ def classify_training_failure(
         if code == "runner_failed" and re.search(r"\bimporterror\s*:", combined):
             code = "dependency_import"
             evidence.append("failure text contains an ImportError exception")
-        if "trainingmemorypressure" in combined:
+        if "trainingmemorypressure" in combined or (exception_type or "").lower() == "trainingmemorypressure":
             code = "resource_limit"
             windows_memory_failure = True
             evidence.append("training stopped by the Windows memory guard before the next epoch")

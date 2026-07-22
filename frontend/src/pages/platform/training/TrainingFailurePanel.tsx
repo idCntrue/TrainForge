@@ -28,6 +28,11 @@ export function TrainingFailurePanel({
     canEvaluateBest: Boolean(recovery?.can_evaluate_best),
   })
   const snapshot = diagnostic.resource_snapshot
+  const isWindowsMemoryGuard = diagnostic.exception_type === 'TrainingMemoryPressure'
+  const summary = isWindowsMemoryGuard ? 'Windows 内存门禁已安全停止训练' : diagnostic.summary
+  const action = isWindowsMemoryGuard
+    ? '可用物理内存低于安全线。请关闭高内存程序、释放物理内存后再重试。'
+    : diagnostic.action
   const availableCommit = snapshot.windows_available_commit_bytes
   const availablePhysical = snapshot.windows_available_physical_bytes
   const leaspacCount = snapshot.windows_leaspac_process_count
@@ -51,10 +56,10 @@ export function TrainingFailurePanel({
     <Alert
       type="error"
       showIcon
-      message={diagnostic.summary}
+      message={summary}
       description={<div className="training-failure-summary">
         <strong>{view.progressText}</strong>
-        <span>{diagnostic.action}</span>
+        <span>{action}</span>
         <span>截至失败前的指标：{view.metricText}</span>
       </div>}
     />

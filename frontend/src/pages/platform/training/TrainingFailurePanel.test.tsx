@@ -54,4 +54,25 @@ describe('TrainingFailurePanel', () => {
     expect(html).toContain('LeASPac')
     expect(html).toContain('30 个 / 31.00 GiB')
   })
+
+  it('explains historical TrainingMemoryPressure diagnostics classified as runner failures', () => {
+    const html = renderToStaticMarkup(<TrainingFailurePanel
+      diagnostic={{
+        schema_version: 1, code: 'runner_failed', summary: '训练进程异常退出',
+        action: '查看技术诊断和日志', technical_message: '剩余提交内存 9.35 GiB，可用物理内存 2.91 GiB',
+        exception_type: 'TrainingMemoryPressure', traceback: null, exit_code: 1,
+        failure_phase: 'preparing', failure_scope: 'training', last_successful_epoch: null,
+        total_epochs: null, occurred_at: '2026-07-22', evidence: [], resource_snapshot: {}, recoverability: null,
+      }}
+      recovery={null}
+      logs={[]}
+      pending={false}
+      onSafeRetry={vi.fn()}
+      onEvaluateBest={vi.fn()}
+    />)
+
+    expect(html).toContain('Windows 内存门禁已安全停止训练')
+    expect(html).toContain('释放物理内存后再重试')
+    expect(html).not.toContain('训练进程异常退出')
+  })
 })
