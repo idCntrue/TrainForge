@@ -210,6 +210,17 @@ class TrainingResourcePolicy:
         return TrainingExecutionPolicy(workers=0, cache=False, cpu_threads=None)
 
     def validate_memory_snapshot(self, snapshot: Mapping[str, int | None]) -> None:
+        self._validate_memory_snapshot(snapshot, check_physical=True)
+
+    def validate_runtime_memory_snapshot(self, snapshot: Mapping[str, int | None]) -> None:
+        self._validate_memory_snapshot(snapshot, check_physical=False)
+
+    def _validate_memory_snapshot(
+        self,
+        snapshot: Mapping[str, int | None],
+        *,
+        check_physical: bool,
+    ) -> None:
         available_commit = snapshot.get("windows_available_commit_bytes")
         available_physical = snapshot.get("windows_available_physical_bytes")
         if available_commit is None and available_physical is None:
@@ -218,7 +229,12 @@ class TrainingResourcePolicy:
             check
             for check, failed in (
                 ("commit", available_commit is not None and available_commit < self.min_available_commit_gb * 1024**3),
-                ("physical", available_physical is not None and available_physical < self.min_available_memory_gb * 1024**3),
+                (
+                    "physical",
+                    check_physical
+                    and available_physical is not None
+                    and available_physical < self.min_available_memory_gb * 1024**3,
+                ),
             )
             if failed
         )

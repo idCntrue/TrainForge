@@ -30,7 +30,7 @@ def ensure_training_memory_available(
     snapshot: dict[str, int | None],
 ) -> None:
     try:
-        policy.validate_memory_snapshot(snapshot)
+        policy.validate_runtime_memory_snapshot(snapshot)
     except InsufficientTrainingMemory as exc:
         detail = exc.as_detail()
         commit = detail.get("available_commit_gib")

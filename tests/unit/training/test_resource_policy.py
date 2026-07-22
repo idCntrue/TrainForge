@@ -176,3 +176,24 @@ def test_rejects_low_windows_physical_memory_and_accepts_linux_snapshot() -> Non
         "windows_available_commit_bytes": None,
         "windows_available_physical_bytes": None,
     })
+
+
+def test_runtime_memory_gate_allows_expected_physical_usage_when_commit_is_safe() -> None:
+    policy = TrainingResourcePolicy()
+
+    policy.validate_runtime_memory_snapshot({
+        "windows_available_commit_bytes": 12 * GIB,
+        "windows_available_physical_bytes": int(3.49 * GIB),
+    })
+
+
+def test_runtime_memory_gate_still_rejects_low_commit_memory() -> None:
+    policy = TrainingResourcePolicy()
+
+    with pytest.raises(InsufficientTrainingMemory) as error:
+        policy.validate_runtime_memory_snapshot({
+            "windows_available_commit_bytes": 3 * GIB,
+            "windows_available_physical_bytes": 6 * GIB,
+        })
+
+    assert error.value.failed_checks == ("commit",)

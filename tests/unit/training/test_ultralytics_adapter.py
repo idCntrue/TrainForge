@@ -34,6 +34,13 @@ def test_accepts_safe_windows_memory_before_next_epoch() -> None:
     })
 
 
+def test_accepts_normal_physical_memory_drop_after_model_loading() -> None:
+    ensure_training_memory_available(TrainingResourcePolicy(), {
+        "windows_available_commit_bytes": 12 * GIB,
+        "windows_available_physical_bytes": int(3.49 * GIB),
+    })
+
+
 def test_accepts_linux_memory_snapshot_before_next_epoch() -> None:
     ensure_training_memory_available(TrainingResourcePolicy(), {
         "memory_current_bytes": 2 * GIB,
