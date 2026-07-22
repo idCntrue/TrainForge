@@ -189,6 +189,19 @@ export interface TrainingFailureDiagnostic {
   recoverability: TrainingRecoveryOptions | null
 }
 
+export interface TrainingResourceCleanupResult {
+  released_bytes: number
+  deleted_files: number
+  deleted_directories: number
+  skipped_symlinks: number
+  python_collected_objects: number
+  cuda_cache_cleared: boolean
+  disk_free_bytes: number
+  disk_total_bytes: number
+  resource_snapshot: Record<string, number | null>
+  warnings: string[]
+}
+
 export interface DatasetQualityReport {
   split_images: Record<string, number>
   split_instances: Record<string, number>
@@ -594,6 +607,7 @@ export const api = {
   collections: () => getJson<VideoCollectionSummary[]>('/video-collections'),
   releases: () => getJson<DatasetReleaseSummary[]>('/dataset-releases'),
   health: () => getJson<HealthStatus>('/health'),
+  cleanupTrainingResources: () => postJson<TrainingResourceCleanupResult>('/training-resources/cleanup', {}),
   listTrainingRuns: () => getJson<TrainingRunApiResponse[]>('/training-runs'),
   getTrainingRun: (id: string) => getJson<TrainingRunApiResponse>(`/training-runs/${id}`),
   getTrainingRunDetails: (id: string) => getJson<TrainingRunDetailsApiResponse>(`/training-runs/${id}/details`),

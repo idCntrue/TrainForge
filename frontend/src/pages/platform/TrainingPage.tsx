@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button, Drawer, Dropdown, Form, Input, message, Modal, Progress, Select, Space, Spin, Table, Tabs, Tooltip } from 'antd'
 import { Box, MoreHorizontal, Plus, RefreshCw, Square } from 'lucide-react'
 
-import { ApiError, api, type TrainingRunDetailsApiResponse, type TrainingStorageErrorDetail } from '../../api'
+import { ApiError, api, type TrainingResourceCleanupResult, type TrainingRunDetailsApiResponse, type TrainingStorageErrorDetail } from '../../api'
 import { PageHeader } from '../../components/platform/PageHeader'
 import { StatusTag } from '../../components/platform/StatusTag'
 import { phaseLabel, statusLabel } from '../../components/platform/statusPresentation'
@@ -16,6 +16,7 @@ import { TrainingChartsTab } from './training/TrainingChartsTab'
 import { TrainingResultsTab } from './training/TrainingResultsTab'
 import { TrainingArtifactsTab } from './training/TrainingArtifactsTab'
 import { TrainingCreationDrawer } from './training/TrainingCreationDrawer'
+import { executeTrainingResourceCleanup, TrainingResourceCleanup } from './training/TrainingResourceCleanup'
 import { normalizeCpuTrainingValues } from './training/trainingResourcePolicy'
 import { createRequestId } from '../../requestId'
 import { MobileRecordCard } from '../../components/mobile/MobileRecordCard'
@@ -46,6 +47,8 @@ export default function TrainingPage() {
   const [weightUploadProgress, setWeightUploadProgress] = useState(0)
   const [recoveryPending, setRecoveryPending] = useState(false)
   const [storageFailure, setStorageFailure] = useState<TrainingStorageErrorDetail>()
+  const [cleanupPending, setCleanupPending] = useState(false)
+  const [cleanupResult, setCleanupResult] = useState<TrainingResourceCleanupResult | null>(null)
   const [form] = Form.useForm<CreateTrainingRunInput>()
   const [modelForm] = Form.useForm<{ name: string; version: string }>()
   const selectedClasses = Form.useWatch('selectedClasses', form) ?? []
@@ -209,9 +212,23 @@ export default function TrainingPage() {
       form.setFieldsValue({ task: datasetTask.task_type, selectedClasses: datasetTask.classes, classAliases: {}, ...resourceValues })
     }
   }
+  const cleanupResources = async () => {
+    try {
+      const result = await executeTrainingResourceCleanup(
+        api.cleanupTrainingResources,
+        setCleanupPending,
+        setCleanupResult,
+      )
+      message.success(`训练资源已释放，共清理 ${(result.released_bytes / 1024 ** 2).toFixed(1)} MiB`)
+      await load()
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '训练资源释放失败')
+    }
+  }
 
   return <div className="platform-stack">
     <PageHeader title="训练运行" description="创建、观察和停止本地 Ultralytics 训练任务。" actions={<Space><Button icon={<RefreshCw size={16} />} onClick={() => void load()}>刷新</Button><Button type="primary" icon={<Plus size={16} />} onClick={openCreateDrawer}>创建训练</Button></Space>} />
+    <TrainingResourceCleanup pending={cleanupPending} result={cleanupResult} onCleanup={() => void cleanupResources()} />
     <div className="platform-filterbar"><Select allowClear placeholder="全部任务" options={taskOptions} value={task} onChange={setTask} /><Select allowClear placeholder="全部状态" options={statusOptions} value={status} onChange={setStatus} /></div>
     <section className="platform-panel">{isMobile ? <div className="mobile-record-list">
       {runs.map((run) => <MobileRecordCard
