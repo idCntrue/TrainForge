@@ -19,7 +19,7 @@ export function TrainingArtifactsTab({ details }: { details: TrainingRunDetailsA
   const distribution = details.split_distribution
   const groups = artifactGroups(details.artifacts)
   return <div className="training-detail-stack">
-    <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={[
+    <Descriptions bordered size="small" column={{ xs: 1, sm: 2, md: 2, lg: 2, xl: 2, xxl: 2 }} items={[
       { key: 'dataset', label: '数据集版本', children: details.configuration.dataset_release_id },
       { key: 'ratios', label: '请求比例', children: distribution.requested_ratios ? `训练 ${distribution.requested_ratios.train}% / 验证 ${distribution.requested_ratios.val}% / 测试 ${distribution.requested_ratios.test}%` : '历史版本未记录' },
       { key: 'classes', label: '训练类别', span: 2, children: details.configuration.selected_classes.join('、') || '全部类别' },
@@ -29,7 +29,7 @@ export function TrainingArtifactsTab({ details }: { details: TrainingRunDetailsA
       { key: 'optimizer', label: '优化器', children: details.configuration.optimizer ?? '历史版本未记录' },
       { key: 'patience', label: '提前停止耐心值', children: details.configuration.patience === 0 ? '已关闭' : details.configuration.patience != null ? `${details.configuration.patience} 轮` : '历史版本未记录' },
       { key: 'close-mosaic', label: '关闭 Mosaic', children: details.configuration.close_mosaic != null ? `最后 ${details.configuration.close_mosaic} 轮` : '历史版本未记录' },
-      { key: 'augment', label: '数据增强', children: details.configuration.augment_profile ?? '历史版本未记录' },
+      { key: 'augment', label: '数据增强', span: 2, children: details.configuration.augment_profile ?? '历史版本未记录' },
     ]} />
 
     <section className="training-artifact-section">
@@ -46,6 +46,5 @@ export function TrainingArtifactsTab({ details }: { details: TrainingRunDetailsA
 
     <section className="training-artifact-section"><div><h3><FileText size={16} />评估报表与日志文件</h3><p>用于复核逐轮指标、运行过程和训练环境。</p></div><ArtifactList artifacts={groups.reports} /></section>
     <section className="training-artifact-section"><div><h3>其他配置与文件</h3><p>保留完整配置和框架生成文件，便于复现与排查。</p></div><ArtifactList artifacts={groups.other} /></section>
-    <section className="training-artifact-section"><div><h3>运行日志（最近 200 行）</h3><p>训练失败或结果异常时，优先查看错误末尾和资源相关提示。</p></div><pre className="training-log-detail">{details.logs.join('\n') || '暂无日志'}</pre></section>
   </div>
 }

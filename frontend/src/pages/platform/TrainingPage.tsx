@@ -15,6 +15,7 @@ import { TrainingOverviewTab } from './training/TrainingOverviewTab'
 import { TrainingChartsTab } from './training/TrainingChartsTab'
 import { TrainingResultsTab } from './training/TrainingResultsTab'
 import { TrainingArtifactsTab } from './training/TrainingArtifactsTab'
+import { TrainingLogsTab } from './training/TrainingLogsTab'
 import { TrainingCreationDrawer } from './training/TrainingCreationDrawer'
 import { executeTrainingResourceCleanup, TrainingResourceCleanup } from './training/TrainingResourceCleanup'
 import { normalizeCpuTrainingValues } from './training/trainingResourcePolicy'
@@ -275,6 +276,7 @@ export default function TrainingPage() {
           { key: 'overview', label: '实时概览', children: <TrainingOverviewTab run={selected} details={details} recoveryPending={recoveryPending} onSafeRetry={() => void recoverRun('safe')} onEvaluateBest={() => void recoverRun('evaluation')} /> },
           { key: 'charts', label: '指标曲线', children: <TrainingChartsTab details={details} /> },
           { key: 'results', label: `结果图像 (${details.artifacts.filter((item) => item.kind === 'image').length})`, children: <TrainingResultsTab details={details} /> },
+          { key: 'logs', label: '运行日志', children: <TrainingLogsTab details={details} /> },
           { key: 'artifacts', label: `参数与产物 (${details.artifacts.length})`, children: <TrainingArtifactsTab details={details} /> },
         ]} /> : null}
       </div>}
