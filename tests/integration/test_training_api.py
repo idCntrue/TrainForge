@@ -10,6 +10,7 @@ from yolo_factory.registry.database import create_registry, session_scope
 from yolo_factory.registry.models import AnnotationExport, DatasetRelease, Task
 from yolo_factory.training.models import TrainingRunSpec
 from yolo_factory.training.repository import TrainingRunRepository
+from yolo_factory.training.resource_cleanup import TrainingResourceCleanupResult
 from yolo_factory.training.resource_policy import TrainingResourcePolicy
 from yolo_factory.training.ultralytics_adapter import prepare_dataset_view
 
@@ -238,6 +239,69 @@ def test_simulation_training_ignores_windows_memory_gate(tmp_path: Path) -> None
             client.post(f"/api/training-runs/{response.json()['id']}/cancel")
 
     assert response.status_code == 201
+
+
+def test_manually_cleans_training_resources_when_idle_without_mutating_records(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    calls: list[Path] = []
+
+    def cleanup(root: Path) -> TrainingResourceCleanupResult:
+        calls.append(root)
+        return TrainingResourceCleanupResult(
+            released_bytes=4096,
+            deleted_files=2,
+            deleted_directories=1,
+            skipped_symlinks=0,
+            python_collected_objects=7,
+            cuda_cache_cleared=False,
+            disk_free_bytes=20 * 1024**3,
+            disk_total_bytes=40 * 1024**3,
+            resource_snapshot={"windows_available_commit_bytes": 9 * 1024**3},
+        )
+
+    app = create_app(
+        storage_root=storage,
+        training_engine="simulation",
+        training_resource_cleanup=cleanup,
+    )
+    with TestClient(app) as client:
+        runs_before = client.get("/api/training-runs").json()
+        releases_before = client.get("/api/dataset-releases").json()
+        response = client.post("/api/training-resources/cleanup")
+        runs_after = client.get("/api/training-runs").json()
+        releases_after = client.get("/api/dataset-releases").json()
+
+    assert response.status_code == 200
+    assert response.json()["released_bytes"] == 4096
+    assert response.json()["resource_snapshot"]["windows_available_commit_bytes"] == 9 * 1024**3
+    assert calls == [storage]
+    assert runs_after == runs_before
+    assert releases_after == releases_before
+
+
+def test_rejects_manual_resource_cleanup_while_training_is_active(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    repository = TrainingRunRepository(create_registry(storage / "registry" / "factory.db"))
+    repository.create(
+        TrainingRunSpec(
+            "queued", "detect", "dataset-lights-1.0.0", "yolo11n.pt",
+            10, 1, 320, "cpu", selected_classes=("light",),
+        ),
+        run_id="training-queued",
+    )
+    calls: list[Path] = []
+    app = create_app(
+        storage_root=storage,
+        training_engine="simulation",
+        training_resource_cleanup=lambda root: calls.append(root),
+    )
+
+    with TestClient(app) as client:
+        response = client.post("/api/training-resources/cleanup")
+
+    assert response.status_code == 409
+    assert "training-queued" in response.json()["detail"]
+    assert calls == []
 
 
 def test_training_preflight_cleans_before_measuring_disk(tmp_path: Path) -> None:

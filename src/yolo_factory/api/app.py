@@ -79,6 +79,7 @@ from yolo_factory.training.resource_policy import (
     UnsafeTrainingConfiguration,
 )
 from yolo_factory.training.resource_snapshot import read_training_memory_snapshot
+from yolo_factory.training.resource_cleanup import cleanup_training_resources
 from yolo_factory.training.storage_cleanup import cleanup_training_storage
 from yolo_factory.training.recovery import plan_safe_retry
 from yolo_factory.training.presets import resolve_training_preset
@@ -380,6 +381,7 @@ def create_app(
     training_disk_usage=shutil.disk_usage,
     training_storage_cleanup=cleanup_training_storage,
     training_memory_snapshot=read_training_memory_snapshot,
+    training_resource_cleanup=cleanup_training_resources,
     imported_model_inspector=inspect_imported_model,
 ) -> FastAPI:
     root = (storage_root or _default_storage_root()).resolve()
@@ -597,6 +599,21 @@ def create_app(
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "storage_root": str(root)}
+
+    @app.post("/api/training-resources/cleanup")
+    @heavy_operation("training-resource-cleanup")
+    def cleanup_training_resource_cache() -> dict:
+        active_statuses = {"queued", "running", "evaluating", "exporting", "verifying"}
+        active_run = next(
+            (run for run in training_repository.list() if run.status in active_statuses),
+            None,
+        )
+        if active_run is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"training run {active_run.id} is active; wait or cancel it before cleanup",
+            )
+        return training_resource_cleanup(root).model_dump()
 
     @app.get("/api/dashboard", response_model=DashboardSummary)
     def dashboard() -> DashboardSummary:
