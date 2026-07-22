@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from yolo_factory.api.app import create_app
 from yolo_factory.registry.database import create_registry, session_scope
-from yolo_factory.registry.models import AnnotationExport, DatasetRelease, Task
+from yolo_factory.registry.models import AnnotationExport, DatasetRelease, ImportedModelRecord, Task
+from yolo_factory.inference.repository import InferenceRunRepository
 from yolo_factory.training.models import TrainingRunSpec
 from yolo_factory.training.repository import TrainingRunRepository
 from yolo_factory.training.resource_cleanup import TrainingResourceCleanupResult
@@ -301,6 +302,46 @@ def test_rejects_manual_resource_cleanup_while_training_is_active(tmp_path: Path
 
     assert response.status_code == 409
     assert "training-queued" in response.json()["detail"]
+    assert calls == []
+
+
+def test_rejects_manual_resource_cleanup_while_inference_is_active(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    registry = create_registry(storage / "registry" / "factory.db")
+    with session_scope(registry) as session:
+        session.add(ImportedModelRecord(
+            id="imported-active",
+            name="active model",
+            task_type="detect",
+            format="pt",
+            original_name="model.pt",
+            artifact_path="models/model.pt",
+            size_bytes=10,
+            sha256="b" * 64,
+            status="ready",
+            class_names_json="[]",
+        ))
+    inference_repository = InferenceRunRepository(registry)
+    calls: list[Path] = []
+    app = create_app(
+        storage_root=storage,
+        training_engine="simulation",
+        training_resource_cleanup=lambda root: calls.append(root),
+    )
+
+    with TestClient(app) as client:
+        inference_repository.create(
+            run_id="inference-active",
+            imported_model_id="imported-active",
+            mode="image",
+            runtime="pt",
+            sources=["input.jpg"],
+            confidence=0.25,
+        )
+        response = client.post("/api/training-resources/cleanup")
+
+    assert response.status_code == 409
+    assert "inference-active" in response.json()["detail"]
     assert calls == []
 
 

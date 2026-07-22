@@ -613,6 +613,15 @@ def create_app(
                 status_code=409,
                 detail=f"training run {active_run.id} is active; wait or cancel it before cleanup",
             )
+        active_inference = next(
+            (run for run in inference_repository.list() if run["status"] in {"queued", "running"}),
+            None,
+        )
+        if active_inference is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"inference run {active_inference['id']} is active; wait or cancel it before cleanup",
+            )
         return training_resource_cleanup(root).model_dump()
 
     @app.get("/api/dashboard", response_model=DashboardSummary)
