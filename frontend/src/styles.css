@@ -182,6 +182,42 @@ button, input { font: inherit; }
 .training-detail-drawer { display: flex; min-height: 520px; flex-direction: column; gap: 14px; }
 .training-detail-loading { min-height: 420px; display: grid; place-items: center; }
 .training-detail-stack { display: flex; flex-direction: column; gap: 16px; }
+.training-run-strip { padding: 16px; display: grid; grid-template-columns: minmax(230px,.8fr) minmax(0,2fr); gap: 20px; border: 1px solid #dce4e1; border-radius: 6px; background: #f8faf9; }
+.training-run-heading { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.training-run-heading > div { display: flex; align-items: center; gap: 8px; color: #697873; font-size: 12px; }
+.training-run-heading > div .ant-tag { margin: 0; }
+.training-run-heading > strong { color: #22312c; font-size: 16px; }
+.training-run-heading .ant-progress { margin: 0; }
+.training-run-stat-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); align-items: stretch; }
+.training-run-stat-grid > div { min-width: 0; padding: 8px 13px; display: flex; flex-direction: column; justify-content: center; gap: 5px; border-left: 1px solid #dde5e1; }
+.training-run-stat-grid span,.training-config-summary dt,.training-class-row > span { color: #74817d; font-size: 11px; }
+.training-run-stat-grid strong { overflow-wrap: anywhere; color: #25332f; font-size: 15px; }
+.training-summary-section,.training-dataset-summary,.training-config-section { display: grid; gap: 12px; }
+.training-section-heading { min-width: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.training-section-heading h3 { margin: 0; color: #25332f; font-size: 15px; }
+.training-section-heading p { margin: 3px 0 0; color: #74817d; font-size: 12px; line-height: 1.55; }
+.training-section-heading .ant-tag { flex: none; margin: 0; }
+.training-summary-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+.training-summary-metric { min-width: 0; min-height: 122px; padding: 13px; display: flex; flex-direction: column; border: 1px solid #dfe6e3; border-radius: 6px; background: #fff; }
+.training-summary-metric > div { display: flex; align-items: center; gap: 6px; color: #53625d; font-size: 12px; }
+.training-summary-metric > div svg { flex: none; color: #8b9692; }
+.training-summary-metric > strong { margin: 9px 0 7px; color: #21312c; font-size: 23px; line-height: 1.1; }
+.training-summary-metric > small { margin-top: auto; color: #74817d; font-size: 11px; line-height: 1.5; }
+.training-loss-trend { display: flex; align-items: center; gap: 5px; }
+.training-loss-trend.improving { color: #2e7d57; }.training-loss-trend.worsening { color: #b5473c; }.training-loss-trend.stable { color: #526d8c; }
+.training-dataset-summary,.training-config-section { padding: 15px; border: 1px solid #dfe6e3; border-radius: 6px; background: #fff; }
+.training-split-explained > div { grid-template-columns: 9px minmax(70px,.45fr) auto minmax(120px,1fr); }
+.training-split-explained small { padding-left: 4px; border-left: 1px solid #e1e7e4; line-height: 1.45; }
+.training-config-summary { margin: 0; display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); border: 1px solid #e1e7e4; border-radius: 6px; overflow: hidden; }
+.training-config-summary > div { min-width: 0; min-height: 62px; padding: 10px 11px; border-right: 1px solid #e1e7e4; border-bottom: 1px solid #e1e7e4; }
+.training-config-summary > div:nth-child(5n) { border-right: 0; }
+.training-config-summary > div:nth-last-child(-n+5) { border-bottom: 0; }
+.training-config-summary dt { margin-bottom: 6px; }
+.training-config-summary dd { margin: 0; overflow-wrap: anywhere; color: #273630; font-size: 12px; line-height: 1.45; }
+.training-class-row { min-width: 0; display: grid; grid-template-columns: 72px minmax(0,1fr); align-items: start; gap: 10px; }
+.training-class-row > span { padding-top: 4px; }
+.training-class-tags { min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.training-class-tags .ant-tag { max-width: 100%; margin: 0; overflow: hidden; text-overflow: ellipsis; }
 .training-progress-card { border-color: #dce4e1; background: #f8faf9; }
 .training-progress-layout { min-height: 150px; display: grid; grid-template-columns: 150px minmax(0,1fr); align-items: center; gap: 22px; }
 .training-epoch-value { display: flex; flex-direction: column; line-height: 1.1; }
@@ -246,6 +282,8 @@ button, input { font: inherit; }
 @media (max-width: 1050px) { .training-chart-grid,.training-chart-guide { grid-template-columns: 1fr; }.training-stat-grid { grid-template-columns: repeat(2, 1fr); }.training-stat-grid .ant-statistic:nth-child(2) { border-right: 0; }.training-stat-grid .ant-statistic:nth-child(-n+2) { border-bottom: 1px solid #e0e6e3; } }
 @media (max-width: 700px) { .sidebar { flex: 0 0 72px !important; width: 72px !important; min-width: 72px !important; max-width: 72px !important; }.brand { justify-content: center; padding: 0; }.brand-copy,.sidebar .ant-menu-title-content,.sidebar-status span { display: none; }.sidebar .ant-menu { padding: 12px 8px; }.sidebar .ant-menu-item { display: grid; place-items: center; padding-inline: 0 !important; }.sidebar .ant-menu-item .ant-menu-item-icon { margin: 0; }.sidebar-status { justify-content: center; margin-inline: 12px; padding-inline: 0; }.platform-page-header { flex-direction: column; }.platform-page-actions { width: 100%; }.platform-metric-grid { grid-template-columns: 1fr 1fr; }.platform-metric { min-height: 82px; padding: 12px; }.platform-metric strong { font-size: 20px; }.gpu-gauge { flex-direction: column; }.gpu-details { width: 100%; }.platform-filterbar { flex-direction: column; }.platform-filterbar .ant-select { width: 100%; }.form-grid,.metric-inline { grid-template-columns: 1fr; }.metric-inline span { border-right: 0; border-bottom: 1px solid #e0e6e3; }.metric-inline span:last-child { border-bottom: 0; }.platform-panel { padding: 14px; }.inference-workspace { grid-template-columns: minmax(0,1fr); }.mock-canvas { min-height: 230px; }.training-result-grid { grid-template-columns: 1fr; }.training-artifact-list > div { align-items: flex-start; flex-direction: column; }.training-log-detail { max-height: 300px; } }
 @media (max-width: 700px) { .training-progress-layout { grid-template-columns: 1fr; justify-items: center; text-align: center; }.training-kpi-grid,.training-weight-grid { grid-template-columns: 1fr; }.training-split-legend { grid-template-columns: 1fr; }.training-weight-card p { min-height: 0; } }
+@media (max-width: 1050px) { .training-run-strip { grid-template-columns: 1fr; }.training-run-stat-grid { grid-template-columns: repeat(3,minmax(0,1fr)); }.training-run-stat-grid > div:nth-child(4) { border-left: 0; }.training-summary-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.training-config-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }.training-config-summary > div,.training-config-summary > div:nth-child(5n),.training-config-summary > div:nth-last-child(-n+5) { border-right: 1px solid #e1e7e4; border-bottom: 1px solid #e1e7e4; }.training-config-summary > div:nth-child(2n) { border-right: 0; }.training-config-summary > div:nth-last-child(-n+2) { border-bottom: 0; } }
+@media (max-width: 700px) { .training-run-strip { padding: 13px; }.training-run-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }.training-run-stat-grid > div,.training-run-stat-grid > div:nth-child(4) { padding: 8px; border-left: 0; border-top: 1px solid #dde5e1; }.training-run-stat-grid > div:nth-child(odd) { border-right: 1px solid #dde5e1; }.training-summary-grid { grid-template-columns: 1fr; }.training-summary-metric { min-height: 108px; }.training-dataset-summary,.training-config-section { padding: 12px; }.training-split-explained > div { grid-template-columns: 9px minmax(0,1fr) auto; }.training-split-explained small { grid-column: 2 / -1; padding: 3px 0 0; border: 0; }.training-config-summary { grid-template-columns: 1fr; }.training-config-summary > div,.training-config-summary > div:nth-child(2n),.training-config-summary > div:nth-last-child(-n+2) { border-right: 0; border-bottom: 1px solid #e1e7e4; }.training-config-summary > div:last-child { border-bottom: 0; }.training-class-row { grid-template-columns: 1fr; gap: 5px; } }
 
 /* Native annotation workspace */
 .annotation-page { height: calc(100vh - 144px); min-height: 620px; display: flex; flex-direction: column; gap: 12px; }
