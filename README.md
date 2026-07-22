@@ -225,12 +225,13 @@ cp .env.docker.example .env
 | `YOLO_FACTORY_MAX_UPLOAD_BYTES` | `2147483648` | 单文件上传上限 |
 | `TRAINING_MIN_FREE_DISK_GB` | `8` | 训练前最小空闲 GiB；仍建议保持 10-12 GiB 以上 |
 | `TRAINING_MIN_FREE_DISK_PERCENT` | `10` | 训练前最小空闲百分比 |
-| `TRAINING_MIN_AVAILABLE_COMMIT_GB` | `8` | Windows 剩余提交内存门禁；仅在可读取 Windows 指标时生效 |
-| `TRAINING_MIN_AVAILABLE_MEMORY_GB` | `4` | Windows 可用物理内存门禁；仅在可读取 Windows 指标时生效 |
+| `TRAINING_MIN_AVAILABLE_COMMIT_GB` | `8` | Windows 启动训练前要求的剩余提交内存；仅在可读取 Windows 指标时生效 |
+| `TRAINING_RUNTIME_MIN_AVAILABLE_COMMIT_GB` | `4` | Windows 训练运行中的剩余提交内存底线；低于该值时在下一轮前安全停止 |
+| `TRAINING_MIN_AVAILABLE_MEMORY_GB` | `4` | Windows 启动训练前要求的可用物理内存；运行中仅作为诊断信息 |
 
 完整配置参见 [.env.docker.example](.env.docker.example)。
 
-Windows 内存门禁只负责阻止启动或在轮次边界安全停止训练。平台不会自动结束 `LeASPac.exe`、`LenovoServiceAS` 或其他系统进程；请由用户确认进程用途后在操作系统中手动处理。
+Windows 内存门禁只负责阻止启动或在轮次边界安全停止训练。启动检查默认保留 8 GiB 提交内存和 4 GiB 物理内存；模型加载后只在剩余提交内存低于 4 GiB 时停止，可避免正常训练占用造成误拦截。不建议将运行阈值设置到 4 GiB 以下。平台不会自动结束 `LeASPac.exe`、`LenovoServiceAS` 或其他系统进程；请由用户确认进程用途后在操作系统中手动处理。
 
 ## 数据与安全
 
