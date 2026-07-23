@@ -64,6 +64,22 @@ describe('application shell layout', () => {
     expect(css).toContain('.inference-result-pagination .ant-btn { width: 36px; height: 36px;')
   })
 
+  it('groups inference controls and isolates test-model import from the main workflow', () => {
+    const source = fs.readFileSync(path.resolve('src/pages/platform/InferencePage.tsx'), 'utf8')
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    expect(source).toContain('inference-control-section')
+    expect(source).toContain('inference-model-picker-row')
+    expect(source).toContain('inference-import-modal')
+    expect(source).toContain('inference-confidence-value')
+    expect(source).toContain('inference-file-summary')
+    expect(source).toContain('inference-submit-bar')
+    expect(source).toContain('导入新模型')
+    expect(css).toContain('.inference-control-section {')
+    expect(css).toContain('.inference-model-picker-row { display: grid;')
+    expect(css).toContain('.inference-submit-bar {')
+  })
+
   it('separates batch metrics, primary review actions, and destructive batch controls', () => {
     const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
