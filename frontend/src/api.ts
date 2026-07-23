@@ -49,6 +49,21 @@ export interface DatasetReleaseSummary {
   grouping_strategy: string | null
 }
 
+export interface DatasetReconciliationFinding {
+  key: string
+  release_id: string | null
+  release_path: string
+  task_id: string | null
+  version: string | null
+  database_exists: boolean
+  directory_exists: boolean
+  manifest_valid: boolean
+  checksums_valid: boolean
+  status: 'healthy' | 'missing_artifacts' | 'orphan_directory' | 'invalid_manifest' | 'checksum_failed' | 'missing_provenance' | 'conflict'
+  message: string
+  allowed_actions: string[]
+}
+
 export interface HealthStatus {
   status: string
   storage_root: string
@@ -606,6 +621,8 @@ export const api = {
   deleteTask: (id: string, deleteArtifacts = true, cascade = false) => deleteResource(`/tasks/${id}?delete_artifacts=${deleteArtifacts}&cascade=${cascade}`),
   collections: () => getJson<VideoCollectionSummary[]>('/video-collections'),
   releases: () => getJson<DatasetReleaseSummary[]>('/dataset-releases'),
+  reconcileDatasetReleases: () => getJson<DatasetReconciliationFinding[]>('/dataset-releases/reconciliation'),
+  registerReconciledDatasetRelease: (releasePath: string) => postJson<DatasetReleaseSummary>('/dataset-releases/reconciliation/register', { release_path: releasePath }),
   health: () => getJson<HealthStatus>('/health'),
   cleanupTrainingResources: () => postJson<TrainingResourceCleanupResult>('/training-resources/cleanup', {}),
   listTrainingRuns: () => getJson<TrainingRunApiResponse[]>('/training-runs'),

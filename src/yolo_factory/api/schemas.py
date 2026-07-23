@@ -79,6 +79,25 @@ class DatasetReleaseSummary(BaseModel):
     created_at: datetime
 
 
+class DatasetReconciliationFindingResponse(BaseModel):
+    key: str
+    release_id: Optional[str] = None
+    release_path: str
+    task_id: Optional[str] = None
+    version: Optional[str] = None
+    database_exists: bool
+    directory_exists: bool
+    manifest_valid: bool
+    checksums_valid: bool
+    status: str
+    message: str
+    allowed_actions: List[str] = Field(default_factory=list)
+
+
+class DatasetReconciliationRegisterRequest(BaseModel):
+    release_path: str = Field(min_length=1, max_length=1024)
+
+
 class VideoImportRequest(BaseModel):
     task_id: str
     collection_id: str

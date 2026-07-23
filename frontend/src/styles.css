@@ -195,6 +195,21 @@ button, input { font: inherit; }
 .ant-table-row { cursor: pointer; }
 .platform-panel .ant-table-wrapper { overflow-x: auto; }
 .release-split-summary { display: inline-block; min-width: 210px; color: #46534f; font-size: 12px; line-height: 1.6; }
+.dataset-reconciliation-drawer .ant-drawer-body { display: flex; flex-direction: column; gap: 18px; }
+.dataset-reconciliation-summary { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-block: 1px solid #e1e7e4; }
+.dataset-reconciliation-summary > div { min-width: 0; padding: 13px 10px; display: flex; flex-direction: column; gap: 3px; border-right: 1px solid #e1e7e4; }
+.dataset-reconciliation-summary > div:last-child { border-right: 0; }
+.dataset-reconciliation-summary strong { color: #18211f; font-size: 20px; font-variant-numeric: tabular-nums; }
+.dataset-reconciliation-summary span { color: #74817d; font-size: 11px; }
+.dataset-reconciliation-list { display: flex; flex-direction: column; }
+.dataset-reconciliation-finding { min-width: 0; padding: 14px 2px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid #e5eae8; }
+.dataset-reconciliation-finding:first-child { border-top: 1px solid #e5eae8; }
+.dataset-reconciliation-finding-main { min-width: 0; display: flex; flex: 1; flex-direction: column; gap: 6px; }
+.dataset-reconciliation-finding-main > span { display: flex; align-items: center; gap: 7px; }
+.dataset-reconciliation-finding-main strong,.dataset-reconciliation-finding-main code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dataset-reconciliation-finding-main code { color: #687570; font-size: 11px; }
+.dataset-reconciliation-finding-main p { margin: 0; color: #53615c; font-size: 12px; line-height: 1.5; }
+.dataset-reconciliation-loading { min-height: 180px; display: flex; align-items: center; justify-content: center; gap: 10px; color: #74817d; }
 .task-class-edit-row { padding: 12px; display: grid; grid-template-columns: minmax(180px, .8fr) minmax(220px, 1.2fr); align-items: end; gap: 14px; border: 1px solid #e0e6e3; border-radius: 6px; }
 .task-class-edit-row > div:first-child { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
 .task-class-edit-row code { overflow: hidden; color: #52605b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
@@ -498,6 +513,13 @@ button, input { font: inherit; }
   .mobile-record-actions .ant-btn { min-height: 36px; }
   .dataset-image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: none; }
   .dataset-image-grid a { padding: 6px; }
+  .dataset-reconciliation-trigger { min-height: 44px; }
+  .dataset-reconciliation-drawer .ant-drawer-body { padding: 14px; }
+  .dataset-reconciliation-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .dataset-reconciliation-summary > div:nth-child(2) { border-right: 0; }
+  .dataset-reconciliation-summary > div:nth-child(-n+2) { border-bottom: 1px solid #e1e7e4; }
+  .dataset-reconciliation-finding { align-items: stretch; flex-direction: column; gap: 10px; }
+  .dataset-reconciliation-finding > .ant-btn { min-height: 44px; }
   .review-batch-workspace { overflow: visible; }
   .review-batch-actions,.review-primary-actions,.review-batch-danger-actions { width: 100%; }
   .review-primary-actions,.review-batch-danger-actions { display: grid; grid-template-columns: 1fr; gap: 8px; }

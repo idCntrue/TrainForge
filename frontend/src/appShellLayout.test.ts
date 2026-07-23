@@ -80,6 +80,19 @@ describe('application shell layout', () => {
     expect(css).toContain('.inference-submit-bar {')
   })
 
+  it('provides dataset storage reconciliation diagnostics and explicit repair', () => {
+    const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    expect(source).toContain('dataset-reconciliation-trigger')
+    expect(source).toContain('dataset-reconciliation-drawer')
+    expect(source).toContain('dataset-reconciliation-summary')
+    expect(source).toContain('dataset-reconciliation-finding')
+    expect(source).toContain('重新注册')
+    expect(css).toContain('.dataset-reconciliation-summary { display: grid;')
+    expect(css).toContain('.dataset-reconciliation-finding {')
+  })
+
   it('separates batch metrics, primary review actions, and destructive batch controls', () => {
     const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')

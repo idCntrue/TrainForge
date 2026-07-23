@@ -28,6 +28,8 @@ from yolo_factory.api.queries import (
 from yolo_factory.api.schemas import (
     DashboardSummary,
     DatasetReleaseSummary,
+    DatasetReconciliationFindingResponse,
+    DatasetReconciliationRegisterRequest,
     TaskSummary,
     TaskCreateRequest,
     TaskUpdateRequest,
@@ -84,6 +86,7 @@ from yolo_factory.training.storage_cleanup import cleanup_training_storage
 from yolo_factory.training.recovery import plan_safe_retry
 from yolo_factory.training.presets import resolve_training_preset
 from yolo_factory.datasets.quality import analyze_dataset_quality
+from yolo_factory.datasets.reconciliation import DatasetReconciliationError, register_orphan_release, scan_dataset_releases
 from yolo_factory.models.domain import ModelVersionSpec
 from yolo_factory.models.executor import LocalModelGateExecutor, ModelGateError
 from yolo_factory.models.repository import DuplicateModelRegistration, InvalidModelTransition, ModelVersionRepository, PublishedModelDeletion, ReferencedModelDeletion
@@ -769,6 +772,27 @@ def create_app(
     )
     def dataset_releases() -> list[DatasetReleaseSummary]:
         return list_dataset_releases(registry, root)
+
+    @app.get(
+        "/api/dataset-releases/reconciliation",
+        response_model=list[DatasetReconciliationFindingResponse],
+    )
+    def dataset_release_reconciliation() -> list[DatasetReconciliationFindingResponse]:
+        return [DatasetReconciliationFindingResponse(**finding.to_dict()) for finding in scan_dataset_releases(registry, root)]
+
+    @app.post(
+        "/api/dataset-releases/reconciliation/register",
+        response_model=DatasetReleaseSummary,
+        status_code=201,
+    )
+    def register_reconciled_dataset_release(req: DatasetReconciliationRegisterRequest) -> DatasetReleaseSummary:
+        try:
+            release = register_orphan_release(registry, root, req.release_path)
+        except DatasetReconciliationError as exc:
+            detail = str(exc)
+            status_code = 422 if "outside" in detail or "symbolic" in detail else 409
+            raise HTTPException(status_code=status_code, detail=detail) from exc
+        return next(item for item in list_dataset_releases(registry, root) if item.id == release.id)
 
     @app.get("/api/dataset-releases/{release_id}/quality")
     def dataset_release_quality(release_id: str) -> dict:

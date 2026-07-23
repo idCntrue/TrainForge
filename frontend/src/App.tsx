@@ -77,6 +77,7 @@ import {
   api,
   type DashboardSummary,
   type DatasetReleaseSummary,
+  type DatasetReconciliationFinding,
   type FrameAssetSummary,
   type HealthStatus,
   type JobStatus,
@@ -1618,6 +1619,10 @@ function DatasetWorkspace({ data, tasks, refreshDashboard }: { data: DatasetRele
   const [browseRelease, setBrowseRelease] = useState<DatasetReleaseSummary>()
   const [releaseImages, setReleaseImages] = useState<Array<{ path: string; name: string; size_bytes: number }>>([])
   const [browsing, setBrowsing] = useState(false)
+  const [reconciliationOpen, setReconciliationOpen] = useState(false)
+  const [reconciliationFindings, setReconciliationFindings] = useState<DatasetReconciliationFinding[]>([])
+  const [reconciliationLoading, setReconciliationLoading] = useState(false)
+  const [registeringPath, setRegisteringPath] = useState<string>()
 
   const browse = async (release: DatasetReleaseSummary) => {
     setBrowseRelease(release); setBrowsing(true)
@@ -1634,8 +1639,56 @@ function DatasetWorkspace({ data, tasks, refreshDashboard }: { data: DatasetRele
     } catch (error) { message.error(error instanceof Error ? error.message : '图片上传失败') } finally { setUploading(false) }
   }
 
+  const scanReleases = async (open = true) => {
+    if (open) setReconciliationOpen(true)
+    try { setReconciliationLoading(true); setReconciliationFindings(await api.reconcileDatasetReleases()) }
+    catch (error) { message.error(error instanceof Error ? error.message : '数据集存储检查失败') }
+    finally { setReconciliationLoading(false) }
+  }
+  const registerOrphan = (finding: DatasetReconciliationFinding) => Modal.confirm({
+    title: '重新注册这个数据集版本？',
+    content: <div><p>将根据已验证的清单恢复数据库记录，不会复制、覆盖或修改数据集文件。</p><code>{finding.release_path}</code></div>,
+    okText: '重新注册',
+    onOk: async () => {
+      try { setRegisteringPath(finding.release_path); await api.registerReconciledDatasetRelease(finding.release_path); await Promise.all([scanReleases(false), Promise.resolve(refreshDashboard())]); message.success('数据集版本已重新注册') }
+      catch (error) { message.error(error instanceof Error ? error.message : '重新注册失败'); throw error }
+      finally { setRegisteringPath(undefined) }
+    },
+  })
+
+  const reconciliationCounts = reconciliationFindings.reduce((counts, finding) => {
+    counts.total += 1
+    if (finding.status === 'healthy') counts.healthy += 1
+    else if (finding.status === 'missing_artifacts') counts.missing += 1
+    else if (finding.status === 'orphan_directory') counts.orphan += 1
+    else counts.invalid += 1
+    return counts
+  }, { total: 0, healthy: 0, missing: 0, orphan: 0, invalid: 0 })
+  const reconciliationPresentation: Record<DatasetReconciliationFinding['status'], { label: string; color: string }> = {
+    healthy: { label: '一致', color: 'green' },
+    missing_artifacts: { label: '目录缺失', color: 'red' },
+    orphan_directory: { label: '未注册目录', color: 'blue' },
+    invalid_manifest: { label: '清单异常', color: 'orange' },
+    checksum_failed: { label: '校验失败', color: 'red' },
+    missing_provenance: { label: '来源缺失', color: 'orange' },
+    conflict: { label: '路径冲突', color: 'red' },
+  }
+
   return <div className="stack">
-    <section className="panel table-panel"><div className="panel-heading"><div><h2>数据集版本</h2><p>浏览不可变发布版本，或上传新图片进入待标注流程</p></div><Button type="primary" icon={<Upload size={15} />} onClick={() => setUploadOpen(true)}>上传图片</Button></div><ReleasesTable data={data} compact refreshDashboard={refreshDashboard} onBrowse={browse} /></section>
+    <section className="panel table-panel"><div className="panel-heading"><div><h2>数据集版本</h2><p>浏览不可变发布版本，或上传新图片进入待标注流程</p></div><Space wrap><Button className="dataset-reconciliation-trigger" icon={<ScanSearch size={15}/>} loading={reconciliationLoading} onClick={() => void scanReleases()}>检查存储一致性</Button><Button type="primary" icon={<Upload size={15} />} onClick={() => setUploadOpen(true)}>上传图片</Button></Space></div><ReleasesTable data={data} compact refreshDashboard={refreshDashboard} onBrowse={browse} /></section>
+    <Drawer className="dataset-reconciliation-drawer" title="数据集存储一致性" open={reconciliationOpen} width="min(680px, 100vw)" onClose={() => setReconciliationOpen(false)} extra={<Button icon={<RefreshCw size={14}/>} loading={reconciliationLoading} onClick={() => void scanReleases(false)}>重新检查</Button>}>
+      <Alert type="info" showIcon message="检查只读取数据库和发布目录" description="不会自动删除、覆盖或从数据库生成图片。目录缺失时，请从云端、DVC 或备份恢复。" />
+      <div className="dataset-reconciliation-summary">
+        <div><strong>{reconciliationCounts.total}</strong><span>检查项</span></div><div><strong>{reconciliationCounts.healthy}</strong><span>一致</span></div><div><strong>{reconciliationCounts.missing + reconciliationCounts.orphan}</strong><span>待同步</span></div><div><strong>{reconciliationCounts.invalid}</strong><span>异常</span></div>
+      </div>
+      {reconciliationLoading && !reconciliationFindings.length ? <div className="dataset-reconciliation-loading"><Spin/><span>正在核对数据库、清单与文件哈希...</span></div> : !reconciliationFindings.length ? <Empty description="没有发现数据集版本" /> : <div className="dataset-reconciliation-list">{reconciliationFindings.map((finding) => {
+        const presentation = reconciliationPresentation[finding.status]
+        return <div className="dataset-reconciliation-finding" key={finding.key}>
+          <div className="dataset-reconciliation-finding-main"><span><Tag color={presentation.color}>{presentation.label}</Tag>{finding.release_id && <strong>{finding.release_id}</strong>}</span><code>{finding.release_path}</code><p>{finding.message}</p></div>
+          {finding.allowed_actions.includes('register') && <Button type="primary" loading={registeringPath === finding.release_path} onClick={() => registerOrphan(finding)}>重新注册</Button>}
+        </div>
+      })}</div>}
+    </Drawer>
     <Modal title="上传待标注图片" open={uploadOpen} confirmLoading={uploading} onCancel={() => setUploadOpen(false)} onOk={() => void upload()} okText="上传并进入标注队列" width={620}>
       <Form form={uploadForm} layout="vertical" initialValues={{ batch_id: `images-${dayjs().format('YYYYMMDD-HHmm')}` }}>
         <Form.Item name="task_id" label="业务任务" rules={[{ required: true }]}><Select options={tasks.map((task) => ({ value: task.id, label: `${task.id} · ${task.task_type}` }))} /></Form.Item>
