@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Empty, Form, Input, List, message, Modal, Progress, Segmented, Select, Slider, Spin, Switch, Tag, Tooltip, Upload as AntUpload } from 'antd'
-import { Download, FileImage, Images, Play, Square, Trash2, Upload, Video } from 'lucide-react'
+import { Alert, Button, Empty, Form, Input, List, message, Modal, Progress, Segmented, Select, Slider, Spin, Tag, Tooltip, Upload as AntUpload } from 'antd'
+import { FileImage, Images, Play, Square, Trash2, Upload, Video } from 'lucide-react'
 
 import { api } from '../../api'
 import type { ImportedModelApiResponse } from '../../api'
@@ -8,7 +8,8 @@ import { PageHeader } from '../../components/platform/PageHeader'
 import { platformRepository } from '../../platform/repository'
 import { mapInference } from '../../platform/apiPlatformRepository'
 import type { InferenceMode, InferenceRun, ModelArtifact, TaskType } from '../../platform/types'
-import { getInferencePreviewKind, selectInitialInferenceModel, selectModelForTask } from './inferencePresentation'
+import { InferenceResultViewer } from './InferenceResultViewer'
+import { selectInitialInferenceModel, selectModelForTask } from './inferencePresentation'
 
 export default function InferencePage() {
   const [sourceKind, setSourceKind] = useState<'published' | 'candidate' | 'imported'>('published')
@@ -128,32 +129,8 @@ export default function InferencePage() {
         </Form>
       </div>
       <div className="platform-panel inference-preview">
-        <div className="platform-panel-heading"><div><h3>结果预览</h3><p>检测明细与标注媒体来自独立推理 Runner</p></div>{run && <span><Switch size="small" checked={showStructuredMasks} onChange={setShowStructuredMasks} disabled={run.mode === 'video'} /> <small>结构化蒙版</small> <Tag color={run.status === 'completed' ? 'green' : ['queued','running'].includes(run.status) ? 'blue' : 'red'}>{run.status}</Tag>{['queued','running'].includes(run.status) && <Button danger size="small" icon={<Square size={13}/>} onClick={()=>void cancel(run)}>取消</Button>}</span>}</div>
-        {running || (run && ['queued','running'].includes(run.status)) ? <Spin tip="后台推理中，可离开页面后从历史恢复"><div style={{height:240}} /></Spin> : !run ? <Empty image={<FileImage size={52}/>} description="提交推理后在此查看真实结果" /> : run.status !== 'completed' ? <Alert type="error" showIcon message={`推理${run.status}`} description="请检查输入路径、模型制品和 Runner 日志。" /> : <List className="inference-result-list" dataSource={run.results} locale={{emptyText:'推理完成，当前阈值下未产生结果项'}} renderItem={(item) => {
-          const previewKind = getInferencePreviewKind(run.mode, item.mediaPath)
-          const mediaUrl = item.mediaPath ? api.getArtifactUrl(item.mediaPath) : undefined
-          const polygons = item.detectionItems.filter((detection) => detection.polygon && detection.polygon.length >= 6)
-          const sourceUrl = api.getArtifactUrl(item.sourceName)
-          return <List.Item className="inference-result-item" actions={mediaUrl ? [<Button key="download" icon={<Download size={14}/>} href={mediaUrl} target="_blank">打开标注产物</Button>] : []}>
-            <div className="inference-result-content">
-              <div className="inference-result-media">
-                {previewKind === 'image' && mediaUrl && (showStructuredMasks && polygons.length ? <div className="inference-image-stage">
-                  <img src={sourceUrl} alt={`${item.sourceName} 原图`} loading="lazy" />
-                  <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="结构化分割蒙版">
-                    {polygons.map((detection, index) => <polygon key={`${detection.classId}-${index}`} points={detection.polygon!.reduce<string[]>((points, value, pointIndex) => pointIndex % 2 === 0 ? [...points, `${value * 100},${detection.polygon![pointIndex + 1] * 100}`] : points, []).join(' ')} />)}
-                  </svg>
-                </div> : <img src={mediaUrl} alt={`${item.sourceName} 推理结果预览`} loading="lazy" />)}
-                {previewKind === 'video' && mediaUrl && <video src={mediaUrl} controls preload="metadata" playsInline />}
-                {previewKind === 'none' && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="本次结果没有可预览媒体" />}
-              </div>
-              <div className="inference-result-meta">
-                <strong>{item.sourceName.split(/[\\/]/).pop() || item.sourceName}</strong>
-                <span>{item.summary} · 推理 {item.durationMs.toFixed(1)} ms</span>
-                <Tooltip title={item.sourceName}><code>{item.sourceName}</code></Tooltip>
-              </div>
-            </div>
-          </List.Item>
-        }} />}
+        <div className="platform-panel-heading"><div><h3>结果预览</h3><p>检测明细与标注媒体来自独立推理 Runner</p></div>{run && <span><Tag color={run.status === 'completed' ? 'green' : ['queued','running'].includes(run.status) ? 'blue' : 'red'}>{run.status}</Tag>{['queued','running'].includes(run.status) && <Button danger size="small" icon={<Square size={13}/>} onClick={()=>void cancel(run)}>取消</Button>}</span>}</div>
+        {running || (run && ['queued','running'].includes(run.status)) ? <Spin tip="后台推理中，可离开页面后从历史恢复"><div style={{height:240}} /></Spin> : !run ? <Empty image={<FileImage size={52}/>} description="提交推理后在此查看真实结果" /> : run.status !== 'completed' ? <Alert type="error" showIcon message={`推理${run.status}`} description="请检查输入路径、模型制品和 Runner 日志。" /> : <InferenceResultViewer run={run} showStructuredMasks={showStructuredMasks} onStructuredMasksChange={setShowStructuredMasks} />}
       </div>
     </section>
     <section className="platform-panel"><div className="platform-panel-heading"><div><h3>推理历史</h3><p>已持久化的图片、批量图片和视频推理记录</p></div></div><List dataSource={history} locale={{ emptyText: '暂无推理历史' }} renderItem={(item)=><List.Item actions={[<Button key="open" type="link" onClick={()=>setRun(item)}>查看</Button>,...(['queued','running'].includes(item.status)?[<Button key="cancel" danger type="link" onClick={()=>void cancel(item)}>取消</Button>]:[<Tooltip key="delete-record" title="保留输出文件"><Button danger type="text" icon={<Trash2 size={14}/>} onClick={()=>deleteHistory(item,false)} /></Tooltip>,<Tooltip key="delete-files" title="删除记录与输出"><Button danger type="text" icon={<Trash2 size={14}/>} onClick={()=>deleteHistory(item,true)} /></Tooltip>])]}><List.Item.Meta title={`${item.mode.toUpperCase()} · ${item.runtime.toUpperCase()}`} description={`${item.id} · ${new Date(item.createdAt).toLocaleString('zh-CN')}`} /><Tag color={item.status==='completed'?'green':['queued','running'].includes(item.status)?'blue':'red'}>{item.status}</Tag></List.Item>} /></section>
