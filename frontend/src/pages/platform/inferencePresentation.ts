@@ -27,3 +27,12 @@ export function getInferencePreviewKind(
   if (!mediaPath) return 'none'
   return mode === 'video' ? 'video' : 'image'
 }
+
+export function clampInferenceResultIndex(index: number, resultCount: number) {
+  if (resultCount <= 0) return 0
+  return Math.min(Math.max(index, 0), resultCount - 1)
+}
+
+export function canNavigateInferenceResults(mode: InferenceMode, resultCount: number) {
+  return mode === 'batch' && resultCount > 1
+}

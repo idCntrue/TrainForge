@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { getInferencePreviewKind, selectInitialInferenceModel, selectModelForTask } from './inferencePresentation'
+import {
+  canNavigateInferenceResults,
+  clampInferenceResultIndex,
+  getInferencePreviewKind,
+  selectInitialInferenceModel,
+  selectModelForTask,
+} from './inferencePresentation'
 
 const publishedModels = [
   { id: 'segment-model', task: 'segment' as const },
@@ -47,5 +53,21 @@ describe('inference result preview', () => {
   it('renders image and batch runs as images', () => {
     expect(getInferencePreviewKind('image', 'inference/result.jpg')).toBe('image')
     expect(getInferencePreviewKind('batch', 'inference/result.jpg')).toBe('image')
+  })
+})
+
+describe('inference result navigation', () => {
+  it('clamps the active result to the available range', () => {
+    expect(clampInferenceResultIndex(-1, 3)).toBe(0)
+    expect(clampInferenceResultIndex(1, 3)).toBe(1)
+    expect(clampInferenceResultIndex(5, 3)).toBe(2)
+    expect(clampInferenceResultIndex(5, 0)).toBe(0)
+  })
+
+  it('only enables navigation for multi-image batch results', () => {
+    expect(canNavigateInferenceResults('batch', 3)).toBe(true)
+    expect(canNavigateInferenceResults('batch', 1)).toBe(false)
+    expect(canNavigateInferenceResults('image', 3)).toBe(false)
+    expect(canNavigateInferenceResults('video', 3)).toBe(false)
   })
 })
