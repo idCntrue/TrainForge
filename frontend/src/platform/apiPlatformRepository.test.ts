@@ -11,9 +11,9 @@ const model = {
 }
 
 const inference = {
-  id: 'inference-001', model_version_id: 'model-001', imported_model_id: null, mode: 'image', runtime: 'pt', sources: ['input.jpg'], confidence: 0.25,
+  id: 'inference-001', model_version_id: 'model-001', imported_model_id: null, mode: 'image', runtime: 'pt', sources: ['D:\\managed\\input.jpg'], confidence: 0.25,
   status: 'completed', progress: 100, message: 'Completed', output_directory: 'outputs', result_path: 'result.json',
-  result: { items: [{ source: 'input.jpg', detections: [{ class_id: 0, class_name: 'door', confidence: 0.92, box: [10, 20, 30, 40], polygon: [0.1, 0.2, 0.3, 0.2, 0.3, 0.4] }], speed: { inference: 12.5 } }], media: ['annotated.jpg'] },
+  result: { items: [{ source: 'image0.jpg', detections: [{ class_id: 0, class_name: 'door', confidence: 0.92, box: [10, 20, 30, 40], polygon: [0.1, 0.2, 0.3, 0.2, 0.3, 0.4] }], speed: { inference: 12.5 } }], media: ['annotated.jpg'] },
   created_at: '2026-07-14T00:02:00Z', updated_at: '2026-07-14T00:02:01Z', finished_at: '2026-07-14T00:02:01Z',
 }
 
@@ -51,7 +51,7 @@ describe('API platform repository', () => {
     const repository = createApiPlatformRepository(apiClient)
     const run = await repository.createInferenceRun({ mode: 'image', task: 'segment', modelId: 'model-001', runtime: 'pt', confidence: 0.25, sourceNames: ['input.jpg'] })
     expect(apiClient.createInferenceRun).toHaveBeenCalledWith({ model_version_id: 'model-001', mode: 'image', runtime: 'pt', sources: ['input.jpg'], confidence: 0.25 })
-    expect(run.results[0]).toMatchObject({ sourceName: 'input.jpg', detections: 1, durationMs: 12.5, mediaPath: 'annotated.jpg' })
+    expect(run.results[0]).toMatchObject({ sourceName: 'D:\\managed\\input.jpg', detections: 1, durationMs: 12.5, mediaPath: 'annotated.jpg' })
     expect(run.results[0].detectionItems[0]).toEqual({
       classId: 0,
       className: 'door',

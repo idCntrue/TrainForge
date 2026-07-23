@@ -1,6 +1,8 @@
+from pathlib import Path
+
 import numpy as np
 
-from yolo_factory.inference.runner import _detections, media_for_source, prediction_source
+from yolo_factory.inference.runner import _detections, ensure_browser_compatible_video, media_for_source, prediction_source
 
 
 class FakeTensor:
@@ -63,3 +65,28 @@ def test_batch_media_is_matched_by_source_stem_not_filesystem_order() -> None:
     media = ["outputs/b.jpg", "outputs/a.jpg"]
     assert media_for_source("inputs/a.jpg", media) == "outputs/a.jpg"
     assert media_for_source("inputs/b.jpg", media) == "outputs/b.jpg"
+
+
+def test_video_output_is_transcoded_to_browser_compatible_mp4(tmp_path: Path) -> None:
+    avi = tmp_path / "annotated.avi"
+    avi.write_bytes(b"avi")
+    commands = []
+
+    def transcode(command, **kwargs):
+        commands.append((command, kwargs))
+        Path(command[-1]).write_bytes(b"mp4")
+
+    media = ensure_browser_compatible_video(
+        [str(avi)],
+        ffmpeg_executable="ffmpeg-test",
+        run_command=transcode,
+    )
+
+    assert media == [str(tmp_path / "annotated.mp4")]
+    assert commands[0][0] == [
+        "ffmpeg-test", "-y", "-i", str(avi), "-an", "-c:v", "libx264",
+        "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart", str(tmp_path / "annotated.mp4"),
+    ]
+    assert commands[0][1] == {"check": True, "capture_output": True, "text": True}
+    assert not avi.exists()

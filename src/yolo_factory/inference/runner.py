@@ -1,5 +1,7 @@
 import argparse
 import json
+import shutil
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,6 +46,32 @@ def media_for_source(source: str, media: list[str]) -> str | None:
     return next((path for path in media if Path(path).stem == stem), None)
 
 
+def ensure_browser_compatible_video(
+    media: list[str],
+    *,
+    ffmpeg_executable: str | None = None,
+    run_command=subprocess.run,
+) -> list[str]:
+    if not media:
+        return media
+    source = Path(media[0])
+    if source.suffix.lower() == ".mp4":
+        return media
+    ffmpeg = ffmpeg_executable or shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("FFmpeg is required to create a browser-compatible inference video")
+    destination = source.with_suffix(".mp4")
+    run_command([
+        ffmpeg, "-y", "-i", str(source), "-an", "-c:v", "libx264",
+        "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart", str(destination),
+    ], check=True, capture_output=True, text=True)
+    if not destination.is_file():
+        raise RuntimeError("FFmpeg completed without creating the inference MP4")
+    source.unlink()
+    return [str(destination.resolve())]
+
+
 def run(manifest_path: Path) -> int:
     from ultralytics import YOLO
 
@@ -70,7 +98,9 @@ def run(manifest_path: Path) -> int:
         normalized.append({"index": index, "source": str(result.path), "detections": _detections(result), "speed": result.speed})
         _emit(progress_path, "running", min(95, 15 + index), f"Processed {index + 1} item(s)")
     media = sorted(str(path.resolve()) for path in (output_directory / "annotated").rglob("*") if path.is_file())
-    if manifest["mode"] != "video":
+    if manifest["mode"] == "video":
+        media = ensure_browser_compatible_video(media)
+    else:
         for item in normalized:
             item["media_path"] = media_for_source(item["source"], media)
     payload = {"run_id": manifest["run_id"], "runtime": manifest["runtime"], "mode": manifest["mode"], "items": normalized, "media": media}

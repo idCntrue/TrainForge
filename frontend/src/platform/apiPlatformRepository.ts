@@ -45,7 +45,7 @@ export function mapInference(run: InferenceRunApiResponse): InferenceRun {
   const results = run.mode === 'video' && items.length
     ? [{ sourceName: run.sources[0], detections: items.reduce((sum, item) => sum + item.detections.length, 0), detectionItems: [], durationMs: items.reduce((sum, item) => sum + (item.speed?.inference ?? 0), 0) / items.length, summary: `${items.length} 帧，${items.reduce((sum, item) => sum + item.detections.length, 0)} 个目标`, mediaPath: media[0] }]
     : items.map((item, index) => ({
-      sourceName: item.source,
+      sourceName: run.sources[index] ?? item.source,
       detections: item.detections.length,
       detectionItems: item.detections.map((detection) => ({
         classId: detection.class_id,
