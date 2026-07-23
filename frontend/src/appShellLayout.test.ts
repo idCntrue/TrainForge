@@ -53,6 +53,17 @@ describe('application shell layout', () => {
     expect(css).not.toContain('.inference-result-media { width: 100%; height: clamp(')
   })
 
+  it('browses batch inference results through one preview and a horizontal thumbnail rail', () => {
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    expect(css).toContain('.inference-result-viewer { min-width: 0;')
+    expect(css).toContain('.inference-result-toolbar { display: flex;')
+    expect(css).toContain('flex-wrap: wrap;')
+    expect(css).toContain('.inference-thumbnail-rail { display: flex; flex-wrap: nowrap; overflow-x: auto;')
+    expect(css).toContain('.inference-thumbnail { position: relative; flex: 0 0 112px; width: 112px; height: 76px;')
+    expect(css).toContain('.inference-result-pagination .ant-btn { width: 36px; height: 36px;')
+  })
+
   it('separates batch metrics, primary review actions, and destructive batch controls', () => {
     const source = fs.readFileSync(path.resolve('src/App.tsx'), 'utf8')
     const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
