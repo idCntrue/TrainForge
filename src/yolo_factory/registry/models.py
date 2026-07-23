@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import BigInteger, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -184,12 +184,16 @@ class TrainingRunRecord(Base, TimestampMixin):
 
 class ModelVersionRecord(Base, TimestampMixin):
     __tablename__ = "model_versions"
+    __table_args__ = (
+        UniqueConstraint("name", "version", name="uq_model_versions_name_version"),
+        Index("ix_model_versions_training_run_id", "training_run_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(160), primary_key=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     version: Mapped[str] = mapped_column(String(64), nullable=False)
     task_type: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
-    training_run_id: Mapped[str] = mapped_column(ForeignKey("training_runs.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    training_run_id: Mapped[str] = mapped_column(ForeignKey("training_runs.id", ondelete="RESTRICT"), nullable=False)
     dataset_release_id: Mapped[str] = mapped_column(ForeignKey("dataset_releases.id", ondelete="RESTRICT"), nullable=False)
     config_json: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True, default="candidate")

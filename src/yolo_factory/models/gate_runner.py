@@ -1,6 +1,7 @@
 import argparse
 import json
 import platform
+import shutil
 import sys
 from pathlib import Path
 
@@ -12,6 +13,34 @@ from scipy.optimize import linear_sum_assignment
 from yolo_factory.models.gates import box_iou, file_metadata
 
 SUPPORTED_IMAGE_EXTENSIONS = {".bmp", ".jpeg", ".jpg", ".png", ".webp"}
+
+
+def _export_onnx_isolated(
+    pt_path: Path,
+    attempt_directory: Path,
+    image_size: int,
+    *,
+    model_loader=None,
+) -> Path:
+    if model_loader is None:
+        from ultralytics import YOLO
+
+        model_loader = YOLO
+    export_directory = (attempt_directory / "exported").resolve()
+    export_directory.mkdir(parents=True, exist_ok=True)
+    local_pt = export_directory / "source.pt"
+    shutil.copy2(pt_path, local_pt)
+    try:
+        exported = Path(model_loader(str(local_pt)).export(
+            format="onnx", imgsz=image_size, opset=17, dynamic=False, simplify=True,
+        )).resolve()
+        if not exported.is_relative_to(export_directory):
+            raise ValueError("gate ONNX export escaped the attempt directory")
+        if not exported.is_file():
+            raise ValueError("gate ONNX export did not create an artifact")
+        return exported
+    finally:
+        local_pt.unlink(missing_ok=True)
 
 
 def _samples(data_yaml: Path, limit: int = 5) -> list[str]:
@@ -113,10 +142,18 @@ def _compare(pt_items: list[dict], onnx_items: list[dict], task_type: str) -> di
         }
         if task_type == "segment":
             pair["mask_iou"] = _mask_iou(pt_item["mask"], onnx_item["mask"])
-        pair["passed"] = pair["box_iou"] >= 0.8 and pair["confidence_delta"] <= 0.15 and (task_type != "segment" or pair["mask_iou"] is not None and pair["mask_iou"] >= 0.75)
+            pair["mask_passed"] = pair["mask_iou"] is not None and pair["mask_iou"] >= 0.75
+        pair["passed"] = pair["box_iou"] >= 0.8 and pair["confidence_delta"] <= 0.15
         pairs.append(pair)
     passed = len(pt_items) == len(onnx_items) == sum(1 for pair in pairs if pair["passed"])
-    return {"passed": passed, "pt_count": len(pt_items), "onnx_count": len(onnx_items), "pairs": pairs}
+    mask_consistency = task_type != "segment" or all(pair.get("mask_passed", False) for pair in pairs)
+    return {
+        "passed": passed,
+        "mask_consistency": mask_consistency,
+        "pt_count": len(pt_items),
+        "onnx_count": len(onnx_items),
+        "pairs": pairs,
+    }
 
 
 def _write_comparison_overlay(
@@ -160,8 +197,7 @@ def run(manifest_path: Path) -> int:
     data_yaml = Path(manifest["data_yaml_path"]).resolve()
     output = manifest_path.parent / "result.json"
     pt_model = YOLO(str(pt_path))
-    exported = pt_model.export(format="onnx", imgsz=manifest["image_size"], opset=17, dynamic=False, simplify=True)
-    onnx_path = Path(exported).resolve()
+    onnx_path = _export_onnx_isolated(pt_path, manifest_path.parent, manifest["image_size"])
     onnx_model = YOLO(str(onnx_path), task=manifest["task_type"])
     sample_reports = []
     for sample_index, source in enumerate(_samples(data_yaml), start=1):
@@ -170,15 +206,24 @@ def run(manifest_path: Path) -> int:
         pt_items = _normalize(pt_result)
         onnx_items = _normalize(onnx_result)
         sample_report = {"source": source, **_compare(pt_items, onnx_items, manifest["task_type"])}
-        if manifest["task_type"] == "segment" and not sample_report["passed"]:
+        if manifest["task_type"] == "segment" and (
+            not sample_report["passed"] or not sample_report["mask_consistency"]
+        ):
             comparison_path = manifest_path.parent / f"comparison-{sample_index}.jpg"
             _write_comparison_overlay(Path(source), pt_items, onnx_items, sample_report["pairs"], comparison_path)
             sample_report["comparison_path"] = str(comparison_path.resolve())
         sample_reports.append(sample_report)
     consistency_passed = bool(sample_reports) and all(report["passed"] for report in sample_reports)
+    mask_consistency_passed = bool(sample_reports) and all(report["mask_consistency"] for report in sample_reports)
     result = {
         "passed": consistency_passed,
-        "gates": {"training": True, "pt": True, "onnx": onnx_path.is_file(), "consistency": consistency_passed},
+        "gates": {
+            "training": True,
+            "pt": True,
+            "onnx": onnx_path.is_file(),
+            "consistency": consistency_passed,
+            "mask_consistency": mask_consistency_passed,
+        },
         "artifacts": {"pt": file_metadata(pt_path), "onnx": file_metadata(onnx_path)},
         "environment": {"python": platform.python_version(), "torch": torch.__version__, "cuda": str(torch.version.cuda), "ultralytics": ultralytics.__version__},
         "samples": sample_reports,

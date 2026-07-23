@@ -137,6 +137,34 @@ button, input { font: inherit; }
 .model-gate-recommendation { display: flex; flex-direction: column; gap: 7px; }
 .model-gate-progress { display: flex; flex-direction: column; gap: 2px; }
 .model-gate-progress > span { color: #7b8884; font-size: 11px; }
+.gate-history { display: flex; flex-direction: column; gap: 12px; }
+.gate-history > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.gate-history h3,.gate-history p { margin: 0; }.gate-history h3 { font-size: 14px; }.gate-history header p { margin-top: 3px; color: #71807b; font-size: 11px; line-height: 1.5; }
+.gate-history-files { min-width: 0; color: #64716d; font-size: 11px; }.gate-history-files summary { width: fit-content; cursor: pointer; color: #276b5d; }
+.gate-history-files dl { margin: 9px 0 0; display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 5px 9px; }.gate-history-files dt { color: #7b8884; }.gate-history-files dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.gate-history-mobile { display: grid; gap: 10px; }.gate-history-card { padding: 13px; display: flex; flex-direction: column; gap: 11px; border: 1px solid #dce4e1; border-radius: 7px; background: #fff; }
+.gate-history-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }.gate-history-card-heading > div { min-width: 0; display: flex; flex-wrap: wrap; gap: 5px; }.gate-history-card-heading > div:first-child { flex-direction: column; }.gate-history-card-heading strong { overflow-wrap: anywhere; font-size: 12px; }.gate-history-card-heading span { color: #74817c; font-size: 10px; }
+.gate-history-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; }.gate-history-metrics > span { padding: 8px; display: flex; flex-direction: column; gap: 3px; border-left: 2px solid #b7d2ca; background: #f7f9f8; }.gate-history-metrics small { color: #74817c; font-size: 9px; }.gate-history-metrics strong { font-size: 11px; }
+.gate-history-actions { display: flex; justify-content: flex-end; padding-top: 9px; border-top: 1px solid #e7ecea; }
+.model-detail-drawer .ant-drawer-body { overflow-x: hidden; }
+.model-detail-drawer .ant-drawer-header { min-height: 64px; padding: 14px 20px; }
+.model-detail-drawer .ant-drawer-header-title { min-width: 0; }
+.model-detail-drawer .ant-drawer-extra { max-width: 68%; }
+.model-detail-drawer .ant-drawer-extra .ant-space { justify-content: flex-end; flex-wrap: wrap; }
+.model-detail-shell { min-width: 0; display: grid; gap: 16px; padding: 4px 2px 28px; }
+.model-detail-shell .detail-status { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.model-detail-shell .ant-descriptions { min-width: 0; }
+.model-detail-shell .ant-descriptions-view { overflow: hidden; }
+.model-detail-shell .gate-history { min-width: 0; padding-top: 4px; border-top: 1px solid #e2e8e5; }
+.model-detail-shell .gate-history-card { min-width: 0; }
+.model-detail-shell .gate-history-files dd { min-width: 0; }
+.model-detail-drawer .ant-descriptions-view table { table-layout: fixed; }
+.model-detail-drawer .ant-descriptions-item-content { min-width: 0; }
+.model-artifact-details { min-width: 0; display: grid; gap: 6px; }
+.model-artifact-path-row { width: 100%; min-width: 0; max-width: 100%; display: flex; }
+.model-artifact-path-row .ant-tooltip-disabled-compatible-wrapper { min-width: 0; flex: 1 1 auto; }
+.model-artifact-path { min-width: 0; max-width: 100%; padding: 5px 8px; display: block; flex: 1 1 0; overflow: hidden; border: 1px solid #d9d9d9; text-overflow: ellipsis; white-space: nowrap; }
+.model-artifact-hash { overflow-wrap: anywhere; }
 .inference-workspace { display: grid; grid-template-columns: minmax(400px, 460px) minmax(0, 1fr); gap: 18px; align-items: start; }
 .inference-controls { display: flex; flex-direction: column; gap: 16px; }
 .inference-controls .ant-form { display: flex; flex-direction: column; }

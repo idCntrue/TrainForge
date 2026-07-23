@@ -12,12 +12,17 @@ from yolo_factory.training.repository import TrainingRunRepository
 
 class PassingGates:
     def run(self, model_id: str, payload: dict):
-        report = Path(payload["pt_path"]).parent / "consistency-report.json"
+        attempt = Path(payload["pt_path"]).parents[3] / "model-versions" / model_id / "gate-runs" / "test-attempt"
+        attempt.mkdir(parents=True, exist_ok=True)
+        report = attempt / "result.json"
         report.write_text("{}", encoding="utf-8")
+        onnx = attempt / "exported" / "source.onnx"
+        onnx.parent.mkdir()
+        onnx.write_bytes(b"onnx")
         return ({
             "passed": True,
-            "gates": {"training": True, "pt": True, "onnx": True, "consistency": True},
-            "artifacts": {"pt": {"path": payload["pt_path"], "sha256": "a" * 64, "size_bytes": 4}, "onnx": {"path": "best.onnx", "sha256": "b" * 64, "size_bytes": 8}},
+            "gates": {"training": True, "pt": True, "onnx": True, "consistency": True, "mask_consistency": False},
+            "artifacts": {"pt": {"path": payload["pt_path"], "sha256": "a" * 64, "size_bytes": 4}, "onnx": {"path": str(onnx), "sha256": "b" * 64, "size_bytes": 4}},
             "environment": {"ultralytics": "test"},
         }, report)
 
@@ -65,6 +70,9 @@ def test_registers_gates_publishes_and_archives_model(tmp_path: Path) -> None:
         gated = client.post(f"/api/model-versions/{model_id}/gates")
         assert gated.status_code == 200
         assert gated.json()["gates"]["consistency"] is True
+        assert gated.json()["gates"]["mask_consistency"] is False
+        assert gated.json()["status"] == "candidate"
+        assert "gate-runs" in gated.json()["artifacts"]["onnx"]["path"]
 
         published = client.post(f"/api/model-versions/{model_id}/publish")
         assert published.json()["status"] == "published"
@@ -72,6 +80,117 @@ def test_registers_gates_publishes_and_archives_model(tmp_path: Path) -> None:
 
         archived = client.post(f"/api/model-versions/{model_id}/archive")
         assert archived.json()["status"] == "archived"
+
+
+def test_exports_published_model_release_bundle(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", model_gate_executor=PassingGates())) as client:
+        model_id = client.post("/api/model-versions", json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"}).json()["id"]
+        client.post(f"/api/model-versions/{model_id}/gates")
+        client.post(f"/api/model-versions/{model_id}/publish")
+        response = client.get(f"/api/model-versions/{model_id}/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+    assert "lights-v1.0.0.zip" in response.headers["content-disposition"]
+    import io, zipfile
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert archive.read("classes.txt") == b"light\n"
+        assert b"D:\\" not in archive.read("manifest.json")
+
+
+def _write_gate_attempt(storage: Path, model_id: str, run_id: str, *, passed: bool = True) -> Path:
+    attempt = storage / "model-versions" / model_id / "gate-runs" / run_id
+    exported = attempt / "exported" / "source.onnx"
+    exported.parent.mkdir(parents=True)
+    exported.write_bytes(run_id.encode())
+    report = attempt / "result.json"
+    report.write_text(json.dumps({
+        "passed": passed,
+        "gates": {
+            "training": True, "pt": True, "onnx": True,
+            "consistency": passed, "mask_consistency": passed,
+        },
+        "artifacts": {
+            "pt": {"path": "best.pt", "sha256": "a" * 64, "size_bytes": 4},
+            "onnx": {"path": str(exported), "sha256": "b" * 64, "size_bytes": exported.stat().st_size},
+        },
+        "environment": {"ultralytics": "test"},
+        "samples": [],
+    }), encoding="utf-8")
+    return attempt
+
+
+def test_lists_and_deletes_historical_gate_run_with_files(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", model_gate_executor=PassingGates())) as client:
+        model_id = client.post("/api/model-versions", json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"}).json()["id"]
+        current = client.post(f"/api/model-versions/{model_id}/gates").json()
+        historical = _write_gate_attempt(storage, model_id, "historical-run")
+
+        listed = client.get(f"/api/model-versions/{model_id}/gate-runs")
+        deleted = client.delete(f"/api/model-versions/{model_id}/gate-runs/historical-run")
+
+    assert listed.status_code == 200
+    assert {run["id"] for run in listed.json()} == {"test-attempt", "historical-run"}
+    assert deleted.status_code == 200
+    assert deleted.json()["fallback_run_id"] is None
+    assert deleted.json()["deleted_size_bytes"] > 0
+    assert not historical.exists()
+    assert deleted.json()["model"]["gate_report_path"] == current["gate_report_path"]
+
+
+def test_deleting_active_gate_run_falls_back_to_previous_completed_run(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", model_gate_executor=PassingGates())) as client:
+        model_id = client.post("/api/model-versions", json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"}).json()["id"]
+        older = _write_gate_attempt(storage, model_id, "older-run")
+        gated = client.post(f"/api/model-versions/{model_id}/gates").json()
+        active_run_id = Path(gated["gate_report_path"]).parent.name
+
+        response = client.delete(f"/api/model-versions/{model_id}/gate-runs/{active_run_id}")
+
+    assert response.status_code == 200
+    assert response.json()["fallback_run_id"] == "older-run"
+    assert response.json()["model"]["gate_report_path"] == str(older / "result.json")
+    assert response.json()["model"]["artifacts"]["onnx"]["path"] == str(older / "exported" / "source.onnx")
+
+
+def test_deleting_last_active_gate_run_resets_model_without_training_artifact_loss(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    training_pt = storage / "training-runs" / "training-001" / "weights" / "best.pt"
+    training_onnx = training_pt.with_suffix(".onnx")
+    training_onnx.write_bytes(b"training-onnx")
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", model_gate_executor=PassingGates())) as client:
+        model_id = client.post("/api/model-versions", json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"}).json()["id"]
+        gated = client.post(f"/api/model-versions/{model_id}/gates").json()
+        active_run_id = Path(gated["gate_report_path"]).parent.name
+
+        response = client.delete(f"/api/model-versions/{model_id}/gate-runs/{active_run_id}")
+
+    assert response.status_code == 200
+    assert response.json()["fallback_run_id"] is None
+    assert response.json()["model"]["status"] == "blocked"
+    assert response.json()["model"]["gates"]["onnx"] is False
+    assert response.json()["model"]["gate_report_path"] is None
+    assert training_pt.read_bytes() == b"best"
+    assert training_onnx.read_bytes() == b"training-onnx"
+
+
+def test_rejects_deleting_active_gate_of_published_model_and_invalid_run_id(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", model_gate_executor=PassingGates())) as client:
+        model_id = client.post("/api/model-versions", json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"}).json()["id"]
+        gated = client.post(f"/api/model-versions/{model_id}/gates").json()
+        active_run_id = Path(gated["gate_report_path"]).parent.name
+        client.post(f"/api/model-versions/{model_id}/publish")
+
+        protected = client.delete(f"/api/model-versions/{model_id}/gate-runs/{active_run_id}")
+        invalid = client.delete(f"/api/model-versions/{model_id}/gate-runs/invalid!run")
+
+    assert protected.status_code == 409
+    assert "published" in protected.json()["detail"].lower()
+    assert invalid.status_code == 422
 
 
 def test_reads_persisted_model_gate_report(tmp_path: Path) -> None:
@@ -199,13 +318,15 @@ def test_rejects_model_gates_when_model_weight_is_missing(tmp_path: Path) -> Non
     assert response.json()["detail"] == "model PT artifact is missing"
 
 
-def test_rejects_registering_the_same_training_run_twice(tmp_path: Path) -> None:
+def test_allows_multiple_versions_from_one_training_run_but_rejects_duplicate_identity(tmp_path: Path) -> None:
     storage = _storage(tmp_path)
     with TestClient(create_app(storage_root=storage, training_engine="simulation")) as client:
         first = client.post("/api/model-versions", json={"training_run_id": "training-001", "name": "lights", "version": "1.0.0"})
+        second = client.post("/api/model-versions", json={"training_run_id": "training-001", "name": "lights", "version": "1.0.1"})
         duplicate = client.post("/api/model-versions", json={"training_run_id": "training-001", "name": "lights", "version": "1.0.1"})
 
     assert first.status_code == 201
+    assert second.status_code == 201
     assert duplicate.status_code == 409
     assert "already" in duplicate.json()["detail"].lower()
 

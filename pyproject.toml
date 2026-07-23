@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yolo-model-factory"
-version = "0.1.1"
+version = "0.2.0"
 description = "Versioned YOLO dataset preparation and model artifact pipeline"
 readme = "README.md"
 requires-python = ">=3.10,<3.11"
@@ -23,6 +23,7 @@ dependencies = [
     "python-multipart>=0.0.20,<1",
   "uvicorn[standard]==0.35.0",
   "ultralytics==8.4.95",
+  "onnx==1.18.0",
 ]
 
 [project.optional-dependencies]

@@ -335,12 +335,14 @@ export interface ModelGatePredictionPair {
   box_iou: number
   confidence_delta: number
   mask_iou?: number | null
+  mask_passed?: boolean
   passed: boolean
 }
 
 export interface ModelGateSampleReport {
   source: string
   passed: boolean
+  mask_consistency?: boolean
   pt_count: number
   onnx_count: number
   pairs: ModelGatePredictionPair[]
@@ -357,6 +359,25 @@ export interface ModelGateReportApiResponse {
   available: boolean
   report: ModelGateReport | null
   reason: 'not_generated' | 'missing' | string | null
+}
+
+export interface ModelGateRunApiResponse {
+  id: string
+  created_at: string
+  status: 'completed' | 'completed_with_warnings' | 'blocked' | 'incomplete'
+  active: boolean
+  gates: Record<string, boolean>
+  onnx: { path: string; size_bytes: number; sha256?: string | null; exists: boolean } | null
+  report_path: string | null
+  total_size_bytes: number
+  diagnostics_available: boolean
+}
+
+export interface ModelGateRunDeleteApiResponse {
+  deleted_run_id: string
+  deleted_size_bytes: number
+  fallback_run_id: string | null
+  model: ModelVersionApiResponse
 }
 
 export interface InferenceRunApiResponse {
@@ -504,6 +525,13 @@ async function getJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
+async function downloadBlob(path: string): Promise<{ blob: Blob; filename?: string }> {
+  const response = await fetch(`${API_BASE_URL}${path}`)
+  if (!response.ok) throw new Error(errorDetail(await response.text().catch(() => '')) || `API request failed: HTTP ${response.status}`)
+  const filename = response.headers.get('content-disposition')?.match(/filename="([^"]+)"/)?.[1]
+  return { blob: await response.blob(), filename }
+}
+
 async function postJson<T>(path: string, body: any): Promise<T> {
   let response: Response
   try {
@@ -565,7 +593,8 @@ async function mutateJson<T>(method: 'PATCH' | 'PUT' | 'DELETE', path: string, b
   })
   if (!response.ok) {
     const errorText = await response.text().catch(() => '')
-    throw new Error(errorText || `API request failed: HTTP ${response.status}`)
+    const detail = errorDetail(errorText)
+    throw new Error(detail || `API request failed: HTTP ${response.status}`)
   }
   return response.json() as Promise<T>
 }
@@ -658,8 +687,11 @@ export const api = {
   createModelVersion: (input: { training_run_id: string; name: string; version: string }) => postJson<ModelVersionApiResponse>('/model-versions', input),
   runModelGates: (id: string) => postJson<ModelVersionApiResponse>(`/model-versions/${id}/gates`, {}),
   getModelGateReport: (id: string) => getJson<ModelGateReportApiResponse>(`/model-versions/${id}/gate-report`),
+  listModelGateRuns: (id: string) => getJson<ModelGateRunApiResponse[]>(`/model-versions/${id}/gate-runs`),
+  deleteModelGateRun: (id: string, runId: string) => mutateJson<ModelGateRunDeleteApiResponse>('DELETE', `/model-versions/${id}/gate-runs/${encodeURIComponent(runId)}`),
   publishModel: (id: string) => postJson<ModelVersionApiResponse>(`/model-versions/${id}/publish`, {}),
   archiveModel: (id: string) => postJson<ModelVersionApiResponse>(`/model-versions/${id}/archive`, {}),
+  downloadModelRelease: (id: string) => downloadBlob(`/model-versions/${id}/export`),
   deleteModel: (id: string, deleteArtifacts = false, cascade = false) => deleteResource(`/model-versions/${id}?delete_artifacts=${deleteArtifacts}&cascade=${cascade}`),
   listInferenceRuns: () => getJson<InferenceRunApiResponse[]>('/inference-runs'),
   getInferenceRun: (id: string) => getJson<InferenceRunApiResponse>(`/inference-runs/${id}`),

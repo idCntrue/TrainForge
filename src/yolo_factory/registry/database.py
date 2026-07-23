@@ -10,6 +10,7 @@ from yolo_factory.registry.models import Base
 from yolo_factory.migrations.frame_lifecycle import migrate_frame_lifecycle
 from yolo_factory.migrations.dataset_release_display_name import migrate_dataset_release_display_name
 from yolo_factory.migrations.imported_models import migrate_imported_models
+from yolo_factory.migrations.model_versions import migrate_model_versions
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ def create_registry(path: Path) -> Registry:
     migrate_frame_lifecycle(path)
     migrate_dataset_release_display_name(path)
     migrate_imported_models(path)
+    migrate_model_versions(path)
     return Registry(
         engine=engine,
         sessions=sessionmaker(bind=engine, expire_on_commit=False),

@@ -50,7 +50,7 @@ function model(gates: Record<string, boolean>): ModelArtifact {
     id: 'model-1', name: 'test', version: '1.0.0', task: 'segment', status: 'blocked', datasetReleaseId: 'dataset-1', datasetName: 'dataset-1',
     trainingRunId: 'training-1', primaryMetric: 0.9, primaryMetricLabel: 'Mask mAP50', sizeMb: 10, formats: ['PT', 'ONNX'], createdAt: '2026-07-20',
     baseModel: '-', weightHash: 'hash', artifacts: {}, environment: '-', gateReportPath: 'report.json', qualityReport,
-    gates: Object.entries(gates).map(([key, passed]) => ({ key, label: key, status: passed ? 'passed' : 'blocked', detail: '', advisory: key === 'quality_recommended' })),
+    gates: Object.entries(gates).map(([key, passed]) => ({ key, label: key, status: passed ? 'passed' : 'blocked', detail: '', advisory: gateDefinition(key).advisory })),
   }
 }
 
@@ -62,6 +62,7 @@ describe('model gate diagnostics', () => {
   it('uses Chinese labels and distinguishes advisory checks', () => {
     expect(gateDefinition('consistency')).toMatchObject({ label: 'PT 与 ONNX 推理一致性', advisory: false })
     expect(gateDefinition('quality_recommended')).toMatchObject({ label: '推荐发布质量', advisory: true })
+    expect(gateDefinition('mask_consistency')).toMatchObject({ advisory: true })
     expect(gateDefinition('unknown').label).toBe('unknown')
   })
 
@@ -101,6 +102,30 @@ describe('model gate diagnostics', () => {
     expect(result.advisoryFailures).toBe(1)
     expect(result.items.find((item) => item.key === 'consistency')?.detail).toContain('2 张验证图片未通过')
     expect(result.items.find((item) => item.key === 'quality_recommended')?.detail).toContain('不单独阻止发布')
+  })
+
+  it('shows mask-only differences as an expanded advisory without a hard failure', () => {
+    const report = {
+      passed: true,
+      gates: { training: true, pt: true, onnx: true, consistency: true, mask_consistency: false },
+      samples: [{
+        source: 'sample-thin.jpg', passed: true, mask_consistency: false, pt_count: 1, onnx_count: 1,
+        comparison_path: 'gate/comparison-1.jpg',
+        pairs: [{ class_id: 0, box_iou: 0.98, confidence_delta: 0.01, mask_iou: 0.046, mask_passed: false, passed: true }],
+      }],
+    } as any
+
+    const result = buildGateDiagnostics(
+      model({ training: true, pt: true, onnx: true, consistency: true, mask_consistency: false, independent_test_available: true, quality_recommended: true }),
+      { available: true, reason: null, report },
+    )
+    const maskGate = result.items.find((item) => item.key === 'mask_consistency')
+
+    expect(result.hardFailures).toBe(0)
+    expect(result.advisoryFailures).toBe(1)
+    expect(maskGate?.expanded).toBe(true)
+    expect(maskGate?.detail).toContain('Mask IoU')
+    expect(maskGate?.samples?.[0].comparisonPath).toBe('gate/comparison-1.jpg')
   })
 
   it('returns a clear fallback when historical details are unavailable', () => {

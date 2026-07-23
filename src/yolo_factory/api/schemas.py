@@ -321,6 +321,25 @@ class ModelGateReportResponse(BaseModel):
     reason: str | None = None
 
 
+class ModelGateRunResponse(BaseModel):
+    id: str
+    created_at: datetime
+    status: str
+    active: bool
+    gates: dict[str, bool]
+    onnx: dict[str, Any] | None = None
+    report_path: str | None = None
+    total_size_bytes: int
+    diagnostics_available: bool
+
+
+class ModelGateRunDeleteResponse(BaseModel):
+    deleted_run_id: str
+    deleted_size_bytes: int
+    fallback_run_id: str | None = None
+    model: ModelVersionResponse
+
+
 class ImportedModelResponse(BaseModel):
     id: str
     name: str

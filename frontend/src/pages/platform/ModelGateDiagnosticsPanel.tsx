@@ -43,17 +43,17 @@ export function ModelGateDiagnosticsPanel({
           {item.advisory && <Tag color="gold">建议项，不单独阻止发布</Tag>}
         </div>,
         children: <div className="model-gate-detail">
-          {item.key === 'consistency' && item.samples?.map((sample) => <article className="model-gate-sample" key={sample.filename}>
+          {['consistency', 'mask_consistency'].includes(item.key) && item.samples?.map((sample) => <article className="model-gate-sample" key={sample.filename}>
             <div className="model-gate-sample-heading"><strong>{sample.filename}</strong><span>PT {sample.ptCount} 个 / ONNX {sample.onnxCount} 个</span></div>
             <ul>{sample.issues.map((issue) => <li key={issue}>{issue}</li>)}</ul>
-            <p><Info size={14} />建议先确认是否为同类别相邻目标的配对问题；若配对正确，再检查 ONNX 导出和分割后处理兼容性。</p>
+            <p><Info size={14} />{item.key === 'mask_consistency' ? '细小或细长目标对少量像素偏移很敏感；请结合对比图和真实推理效果判断，该建议项不单独阻止发布。' : '建议先确认是否为同类别相邻目标的配对问题；若配对正确，再检查 ONNX 导出和分割后处理兼容性。'}</p>
             {sample.comparisonPath && <div><p>对比图：红色为 PT，青色为 ONNX。</p><a href={api.getArtifactUrl(sample.comparisonPath)} target="_blank" rel="noreferrer"><img src={api.getArtifactUrl(sample.comparisonPath)} alt={`${sample.filename} PT 与 ONNX 对比`} style={{ width: '100%', maxHeight: 320, objectFit: 'contain' }} /></a></div>}
           </article>)}
           {item.key === 'quality_recommended' && <div className="model-gate-recommendation">
             <p>{quality.summary}</p>
             <strong>{quality.recommendation}</strong>
           </div>}
-          {item.key !== 'consistency' && item.key !== 'quality_recommended' && <p>{item.detail}</p>}
+          {!['consistency', 'mask_consistency', 'quality_recommended'].includes(item.key) && <p>{item.detail}</p>}
         </div>,
       }))}
     />

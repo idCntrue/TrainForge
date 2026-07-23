@@ -147,4 +147,28 @@ describe('application shell layout', () => {
     expect(css).toContain('.ant-upload-drag { padding-inline: 12px;')
     expect(css).toContain('.inference-result-media { min-height: 180px;')
   })
+
+  it('keeps long model artifact paths inside the model drawer', () => {
+    const source = fs.readFileSync(path.resolve('src/pages/platform/ModelsPage.tsx'), 'utf8')
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    expect(source).toContain('model-detail-drawer')
+    expect(source).toContain('model-artifact-details')
+    expect(source).toContain('model-artifact-path')
+    expect(css).toContain('.model-detail-drawer .ant-drawer-body { overflow-x: hidden; }')
+    expect(css).toContain('.model-artifact-details { min-width: 0;')
+    expect(css).toContain('.model-artifact-path { min-width: 0;')
+    expect(css).toContain('.model-artifact-hash { overflow-wrap: anywhere;')
+  })
+
+  it('uses a spacious card-based model detail drawer without squeezed gate tables', () => {
+    const source = fs.readFileSync(path.resolve('src/pages/platform/ModelsPage.tsx'), 'utf8')
+    const css = fs.readFileSync(path.resolve('src/styles.css'), 'utf8')
+
+    expect(source).toContain('model-detail-shell')
+    expect(source).toContain('mobile={true}')
+    expect(css).toContain('.model-detail-drawer .ant-drawer-body')
+    expect(css).toContain('.model-detail-shell { min-width: 0;')
+    expect(css).toContain('.model-detail-drawer .ant-drawer-header')
+  })
 })

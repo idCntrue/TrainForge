@@ -54,6 +54,8 @@ from yolo_factory.api.schemas import (
     ModelVersionCreateRequest,
     ModelVersionResponse,
     ModelGateReportResponse,
+    ModelGateRunResponse,
+    ModelGateRunDeleteResponse,
     ImportedModelResponse,
     InferenceRunCreateRequest,
     InferenceRunResponse,
@@ -90,7 +92,9 @@ from yolo_factory.datasets.reconciliation import DatasetReconciliationError, reg
 from yolo_factory.models.domain import ModelVersionSpec
 from yolo_factory.models.executor import LocalModelGateExecutor, ModelGateError
 from yolo_factory.models.repository import DuplicateModelRegistration, InvalidModelTransition, ModelVersionRepository, PublishedModelDeletion, ReferencedModelDeletion
+from yolo_factory.models.release_bundle import ReleaseBundleError, build_release_bundle
 from yolo_factory.models.gates import file_metadata
+from yolo_factory.models.gate_history import gate_run_directory, list_gate_runs, read_gate_run_result
 from yolo_factory.models.imported_inspector import inspect_imported_model
 from yolo_factory.models.imported_repository import ImportedModelRepository, ReferencedImportedModelDeletion
 from yolo_factory.inference.executor import InferenceExecutionError, LocalInferenceExecutor
@@ -556,7 +560,14 @@ def create_app(
                     artifact_paths.append(Path(record.output_directory).resolve())
             for model in session.scalars(select(ModelVersionRecord).where(ModelVersionRecord.id.in_(model_ids))):
                 config = json.loads(model.config_json)
-                candidates = [config.get("pt_path", ""), *(item.get("path", "") for item in config.get("artifacts", {}).values())]
+                shared_pt = config.get("pt_path", "")
+                if shared_pt:
+                    validate_artifact_paths([Path(shared_pt).resolve()])
+                candidates = [
+                    item.get("path", "")
+                    for name, item in config.get("artifacts", {}).items()
+                    if name != "pt"
+                ]
                 artifact_paths.extend(Path(value).resolve() for value in candidates if value)
             validate_artifact_paths(artifact_paths)
         session.execute(delete(InferenceRunRecord).where(InferenceRunRecord.model_version_id.in_(model_ids)))
@@ -1279,6 +1290,90 @@ def create_app(
             raise HTTPException(status_code=409, detail="model gate report is invalid")
         return ModelGateReportResponse(available=True, report=report)
 
+    @app.get("/api/model-versions/{model_id}/gate-runs", response_model=list[ModelGateRunResponse])
+    def model_gate_runs(model_id: str) -> list[ModelGateRunResponse]:
+        try:
+            model = model_repository.get_required(model_id)
+            runs = list_gate_runs(
+                root,
+                model_id,
+                Path(model.gate_report_path) if model.gate_report_path else None,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="model version not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return [ModelGateRunResponse.model_validate(run) for run in runs]
+
+    @app.delete(
+        "/api/model-versions/{model_id}/gate-runs/{run_id}",
+        response_model=ModelGateRunDeleteResponse,
+    )
+    def delete_model_gate_run(model_id: str, run_id: str) -> ModelGateRunDeleteResponse:
+        try:
+            model = model_repository.get_required(model_id)
+            directory = gate_run_directory(root, model_id, run_id)
+            runs = list_gate_runs(
+                root,
+                model_id,
+                Path(model.gate_report_path) if model.gate_report_path else None,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="model version not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        target = next((run for run in runs if run["id"] == run_id), None)
+        if target is None or directory.is_symlink() or not directory.is_dir():
+            raise HTTPException(status_code=404, detail="model gate run not found")
+        if target["active"] and model.status == "published":
+            raise HTTPException(
+                status_code=409,
+                detail="published model is using this gate run; archive it or run a newer gate before deletion",
+            )
+
+        fallback_run_id = None
+        updated = model
+        if target["active"]:
+            fallback = next(
+                (
+                    run for run in runs
+                    if run["id"] != run_id and run["status"] != "incomplete" and run["onnx"] is not None
+                ),
+                None,
+            )
+            if fallback is None:
+                updated = model_repository.clear_gate_run(model_id)
+            else:
+                result = read_gate_run_result(root, model_id, fallback["id"])
+                if result is None:
+                    raise HTTPException(status_code=409, detail="fallback gate report is unavailable")
+                artifacts = dict(result.get("artifacts") or {})
+                artifacts["onnx"] = dict(fallback["onnx"])
+                updated = model_repository.activate_gate_run(
+                    model_id,
+                    gates=dict(result.get("gates") or {}),
+                    artifacts=artifacts,
+                    environment=dict(result.get("environment") or {}),
+                    gate_report_path=str(gate_run_directory(root, model_id, fallback["id"]) / "result.json"),
+                )
+                fallback_run_id = fallback["id"]
+
+        deleted_size = int(target["total_size_bytes"])
+        try:
+            shutil.rmtree(directory)
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"gate references were updated but files could not be removed: {exc}",
+            ) from exc
+        return ModelGateRunDeleteResponse(
+            deleted_run_id=run_id,
+            deleted_size_bytes=deleted_size,
+            fallback_run_id=fallback_run_id,
+            model=_model_response(updated),
+        )
+
     @app.post("/api/model-versions/{model_id}/gates", response_model=ModelVersionResponse)
     @heavy_operation("model-gates")
     def run_model_gates(model_id: str) -> ModelVersionResponse:
@@ -1338,6 +1433,21 @@ def create_app(
         except InvalidModelTransition as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.get("/api/model-versions/{model_id}/export")
+    def export_model_version(model_id: str) -> Response:
+        try:
+            model = model_repository.get_required(model_id)
+            payload, filename = build_release_bundle(root, model)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="model version not found") from exc
+        except ReleaseBundleError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return Response(
+            content=payload,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
     @app.delete("/api/model-versions/{model_id}", status_code=204)
     def delete_model(model_id: str, delete_artifacts: bool = False, cascade: bool = False) -> Response:
         try:
@@ -1350,7 +1460,13 @@ def create_app(
                 return Response(status_code=204)
             artifact_paths: list[Path] = []
             if delete_artifacts:
-                candidates = [model.spec.pt_path, *(artifact.get("path", "") for artifact in model.artifacts.values())]
+                # Training weights are shared by all model versions for a run.
+                # Only model-owned gate artifacts may be removed here.
+                candidates = [
+                    artifact.get("path", "")
+                    for name, artifact in model.artifacts.items()
+                    if name != "pt"
+                ]
                 for value in candidates:
                     if not value:
                         continue
@@ -1398,7 +1514,7 @@ def create_app(
             if await save_uploaded_file(file, destination) == 0:
                 raise HTTPException(status_code=422, detail="model file is empty")
             try:
-                inspected = imported_model_inspector(destination, artifact_format)
+                inspected = imported_model_inspector(destination, artifact_format, task_type)
             except Exception as exc:
                 raise HTTPException(status_code=422, detail=f"model file could not be loaded: {exc}") from exc
             discovered_task = str(inspected.get("task_type") or "")

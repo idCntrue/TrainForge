@@ -153,7 +153,12 @@ def test_runs_inference_with_unpublished_candidate_model(tmp_path: Path) -> None
 
 def test_imports_reuses_and_protects_external_test_model(tmp_path: Path) -> None:
     storage = _storage(tmp_path)
-    inspector = lambda path, artifact_format: {"task_type": "segment", "class_names": ["tag"]}
+    inspected_arguments = []
+
+    def inspector(path, artifact_format, expected_task):
+        inspected_arguments.append((path, artifact_format, expected_task))
+        return {"task_type": "segment", "class_names": ["tag"]}
+
     with TestClient(create_app(
         storage_root=storage, training_engine="simulation", inference_executor=PassingInference(),
         imported_model_inspector=inspector,
@@ -171,6 +176,7 @@ def test_imports_reuses_and_protects_external_test_model(tmp_path: Path) -> None
         assert imported["artifact"]["exists"] is True
         assert imported["artifact"]["sha256"]
         assert imported["class_names"] == ["tag"]
+        assert inspected_arguments == [(artifact, "pt", "segment")]
         assert client.get("/api/imported-models").json()[0]["id"] == imported["id"]
 
         inference = client.post(

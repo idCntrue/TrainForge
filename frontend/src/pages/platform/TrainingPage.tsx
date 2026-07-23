@@ -22,6 +22,7 @@ import { normalizeCpuTrainingValues } from './training/trainingResourcePolicy'
 import { createRequestId } from '../../requestId'
 import { MobileRecordCard } from '../../components/mobile/MobileRecordCard'
 import { useMobileViewport } from '../../responsive/useMobileViewport'
+import { nextPatchVersion } from './modelVersioning'
 
 const taskOptions = ['detect', 'segment'].map((value) => ({ value, label: value.toUpperCase() }))
 const statusOptions = ['queued', 'running', 'evaluating', 'exporting', 'verifying', 'completed', 'failed', 'cancelled', 'interrupted'].map((value) => ({ value, label: statusLabel(value) }))
@@ -183,6 +184,17 @@ export default function TrainingPage() {
       message.error(error instanceof Error ? error.message : '注册候选模型失败')
     }
   }
+  const openRegisterModel = async (run: TrainingRun) => {
+    try {
+      const models = await api.listModelVersions()
+      const related = models.filter((model) => model.training_run_id === run.id && model.name === run.name)
+      setRegisterRun(run)
+      modelForm.setFieldsValue({ name: run.name, version: nextPatchVersion(related.map((model) => model.version)) })
+    } catch {
+      setRegisterRun(run)
+      modelForm.setFieldsValue({ name: run.name, version: '1.0.0' })
+    }
+  }
   const recoverRun = async (mode: 'safe' | 'evaluation') => {
     if (!selected || recoveryPending) return
     setRecoveryPending(true)
@@ -270,7 +282,7 @@ export default function TrainingPage() {
       onClose={closeCreateDrawer}
       onSubmit={(values) => void createRun(values)}
     />
-    <Drawer className="mobile-fullscreen-drawer" width={isMobile ? '100%' : 'min(1080px, 94vw)'} title={selected?.name} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && <Space>{selected.status === 'completed' && <Button type="primary" icon={<Box size={15} />} onClick={() => { setRegisterRun(selected); modelForm.setFieldsValue({ name: selected.name, version: '1.0.0' }) }}>注册候选模型</Button>}{['queued','running'].includes(selected.status) ? <Button danger icon={<Square size={15} />} onClick={() => void cancelRun(selected)}>停止</Button> : <Dropdown trigger={['click']} menu={{ items:[{key:'record',label:'仅删除训练记录'},{key:'artifacts',label:'删除记录并清理训练产物',danger:true},{key:'cascade',label:'级联删除全部下游数据',danger:true}],onClick:({key})=>deleteRun(selected,key!=='record',key==='cascade') }}><Button icon={<MoreHorizontal size={15}/>}>删除与清理</Button></Dropdown>}</Space>}>
+    <Drawer className="mobile-fullscreen-drawer" width={isMobile ? '100%' : 'min(1080px, 94vw)'} title={selected?.name} open={Boolean(selected)} onClose={() => setSelected(undefined)} extra={selected && <Space>{selected.status === 'completed' && <Button type="primary" icon={<Box size={15} />} onClick={() => void openRegisterModel(selected)}>注册候选模型</Button>}{['queued','running'].includes(selected.status) ? <Button danger icon={<Square size={15} />} onClick={() => void cancelRun(selected)}>停止</Button> : <Dropdown trigger={['click']} menu={{ items:[{key:'record',label:'仅删除训练记录'},{key:'artifacts',label:'删除记录并清理训练产物',danger:true},{key:'cascade',label:'级联删除全部下游数据',danger:true}],onClick:({key})=>deleteRun(selected,key!=='record',key==='cascade') }}><Button icon={<MoreHorizontal size={15}/>}>删除与清理</Button></Dropdown>}</Space>}>
       {selected && <div className="training-detail-drawer"><div className="detail-status"><TaskTag task={selected.task} /><StatusTag status={selected.status} /><span>{selected.duration}</span><strong>Epoch {selected.epoch}/{selected.epochs}</strong></div>
         {detailsLoading && !details ? <div className="training-detail-loading"><Spin /></div> : details ? <Tabs defaultActiveKey="overview" items={[
           { key: 'overview', label: '实时概览', children: <TrainingOverviewTab run={selected} details={details} recoveryPending={recoveryPending} onSafeRetry={() => void recoverRun('safe')} onEvaluateBest={() => void recoverRun('evaluation')} /> },

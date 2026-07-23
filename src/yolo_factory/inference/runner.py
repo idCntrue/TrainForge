@@ -41,6 +41,12 @@ def prediction_source(manifest: dict):
     return manifest["sources"]
 
 
+def prediction_inputs(manifest: dict) -> list:
+    if manifest["mode"] == "batch" and manifest["runtime"] == "onnx":
+        return list(manifest["sources"])
+    return [prediction_source(manifest)]
+
+
 def media_for_source(source: str, media: list[str]) -> str | None:
     stem = Path(source).stem
     return next((path for path in media if Path(path).stem == stem), None)
@@ -82,21 +88,25 @@ def run(manifest_path: Path) -> int:
     output_directory.mkdir()
     model = YOLO(manifest["artifact_path"], task=manifest["task_type"])
     _emit(progress_path, "running", 10, "Model loaded; inference started")
-    results = model.predict(
-        source=prediction_source(manifest),
-        conf=manifest["confidence"],
-        device=manifest["device"],
-        save=True,
-        project=str(output_directory),
-        name="annotated",
-        exist_ok=True,
-        stream=manifest["mode"] == "video",
-        verbose=False,
-    )
     normalized = []
-    for index, result in enumerate(results):
-        normalized.append({"index": index, "source": str(result.path), "detections": _detections(result), "speed": result.speed})
-        _emit(progress_path, "running", min(95, 15 + index), f"Processed {index + 1} item(s)")
+    total_sources = len(manifest["sources"])
+    for source in prediction_inputs(manifest):
+        results = model.predict(
+            source=source,
+            conf=manifest["confidence"],
+            device=manifest["device"],
+            save=True,
+            project=str(output_directory),
+            name="annotated",
+            exist_ok=True,
+            stream=manifest["mode"] == "video",
+            verbose=False,
+        )
+        for result in results:
+            index = len(normalized)
+            normalized.append({"index": index, "source": str(result.path), "detections": _detections(result), "speed": result.speed})
+            progress = min(95, 10 + (85 * (index + 1) / max(1, total_sources)))
+            _emit(progress_path, "running", progress, f"Processed {index + 1} item(s)")
     media = sorted(str(path.resolve()) for path in (output_directory / "annotated").rglob("*") if path.is_file())
     if manifest["mode"] == "video":
         media = ensure_browser_compatible_video(media)

@@ -10,6 +10,7 @@ const definitions: Record<string, { label: string; description: string; advisory
   pt: { label: 'PT 模型文件', description: '原始 PyTorch 模型文件存在且可以读取。', advisory: false },
   onnx: { label: 'ONNX 模型文件', description: '已成功导出可部署的 ONNX 模型文件。', advisory: false },
   consistency: { label: 'PT 与 ONNX 推理一致性', description: '验证 PT 与 ONNX 对相同图片的预测是否足够一致。', advisory: false },
+  mask_consistency: { label: '分割掩膜一致性', description: '比较 PT 与 ONNX 的掩膜边界差异；细小或细长目标可能对像素偏移敏感，该项不单独阻止发布。', advisory: true },
   independent_test_available: { label: '独立测试结果', description: '模型具有独立测试集评估结果，可用于判断泛化能力。', advisory: false },
   quality_recommended: { label: '推荐发布质量', description: '模型是否达到建议的测试证据和质量指标，该项不单独阻止发布。', advisory: true },
 }
@@ -94,6 +95,23 @@ export function summarizeConsistency(report: ModelGateReport): ConsistencyDiagno
   }
 }
 
+export function summarizeMaskConsistency(report: ModelGateReport): ConsistencyDiagnostic {
+  const failed = (report.samples ?? []).filter((sample) =>
+    sample.mask_consistency === false
+    || sample.pairs.some((pair) => pair.mask_passed === false || typeof pair.mask_iou === 'number' && pair.mask_iou < MASK_IOU_MIN),
+  )
+  const values = failed.flatMap((sample) =>
+    sample.pairs.flatMap((pair) => typeof pair.mask_iou === 'number' ? [pair.mask_iou] : []),
+  )
+  const minimum = values.length ? Math.min(...values) : undefined
+  return {
+    summary: failed.length
+      ? `${failed.length} 张图片存在掩膜边界差异${minimum === undefined ? '' : `，最低 Mask IoU ${format(minimum)}`}；该项用于提示 ONNX 掩膜保真度，不单独阻止发布。`
+      : '抽样图片的 PT 与 ONNX 分割掩膜一致。',
+    samples: failed.map(sampleDiagnostic),
+  }
+}
+
 export function qualityRecommendation(report?: TrainingQualityReport) {
   const thresholds = report?.thresholds ?? {}
   const minimumImages = Number(thresholds.min_test_images ?? 30)
@@ -118,16 +136,22 @@ export function buildGateDiagnostics(model: ModelArtifact, reportResponse?: Mode
   const advisoryFailures = model.gates.filter((gate) => gate.advisory && !gateValue(gate)).length
   const passed = model.gates.filter(gateValue).length
   const consistency = reportResponse?.available && reportResponse.report ? summarizeConsistency(reportResponse.report) : undefined
+  const maskConsistency = reportResponse?.available && reportResponse.report ? summarizeMaskConsistency(reportResponse.report) : undefined
   const quality = qualityRecommendation(model.qualityReport)
   const items = model.gates.map<GateDiagnosticItem>((gate) => {
     const definition = gateDefinition(gate.key)
     const failed = !gateValue(gate)
     const detail = gate.key === 'consistency' && failed && consistency
       ? consistency.summary
+      : gate.key === 'mask_consistency' && failed && maskConsistency
+        ? maskConsistency.summary
       : gate.key === 'quality_recommended'
         ? `${quality.summary}${gate.advisory ? ' 该项不单独阻止发布。' : ''}`
         : failed ? `${definition.description} 当前检查未通过。` : definition.description
-    return { ...gate, label: definition.label, advisory: definition.advisory, detail, expanded: failed, samples: gate.key === 'consistency' ? consistency?.samples : undefined }
+    const samples = gate.key === 'consistency'
+      ? consistency?.samples
+      : gate.key === 'mask_consistency' ? maskConsistency?.samples : undefined
+    return { ...gate, label: definition.label, advisory: definition.advisory, detail, expanded: failed, samples }
   })
   return {
     summary: `${passed} 项通过，${hardFailures} 项阻止发布，${advisoryFailures} 项质量建议未达标。`,

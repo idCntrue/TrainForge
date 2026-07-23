@@ -5,7 +5,12 @@ import numpy as np
 import pytest
 import yaml
 
-from yolo_factory.models.gate_runner import _compare, _samples, _write_comparison_overlay
+from yolo_factory.models.gate_runner import (
+    _compare,
+    _export_onnx_isolated,
+    _samples,
+    _write_comparison_overlay,
+)
 
 
 def _write_data_yaml(tmp_path: Path, payload: object) -> Path:
@@ -93,6 +98,67 @@ def test_compare_consumes_each_onnx_instance_even_when_a_pair_fails() -> None:
     assert [pair["onnx_index"] for pair in report["pairs"]] == [0, 1]
     assert len({pair["onnx_index"] for pair in report["pairs"]}) == 2
     assert report["pairs"][0]["passed"] is False
+
+
+def test_mask_only_mismatch_is_advisory() -> None:
+    left = np.zeros((20, 20), dtype=np.float32)
+    right = np.zeros((20, 20), dtype=np.float32)
+    left[4:8, 4:16] = 1
+    right[9:13, 4:16] = 1
+
+    report = _compare(
+        [_item([4, 4, 16, 13], 0.90, left)],
+        [_item([4, 4, 16, 13], 0.88, right)],
+        "segment",
+    )
+
+    assert report["passed"] is True
+    assert report["mask_consistency"] is False
+    assert report["pairs"][0]["passed"] is True
+    assert report["pairs"][0]["mask_passed"] is False
+
+
+def test_box_mismatch_remains_blocking_when_masks_match() -> None:
+    mask = np.ones((8, 8), dtype=np.float32)
+
+    report = _compare(
+        [_item([0, 0, 10, 10], 0.90, mask)],
+        [_item([5, 0, 15, 10], 0.90, mask)],
+        "segment",
+    )
+
+    assert report["passed"] is False
+    assert report["pairs"][0]["passed"] is False
+
+
+def test_exports_onnx_inside_gate_attempt_without_overwriting_training_artifact(tmp_path: Path) -> None:
+    weights = tmp_path / "training" / "weights"
+    weights.mkdir(parents=True)
+    pt_path = weights / "best.pt"
+    pt_path.write_bytes(b"pt-model")
+    training_onnx = weights / "best.onnx"
+    training_onnx.write_bytes(b"existing-onnx")
+    attempt = tmp_path / "model-versions" / "model-1" / "gate-runs" / "attempt-1"
+
+    loaded_paths = []
+
+    class FakeModel:
+        def export(self, **kwargs):
+            exported = Path(loaded_paths[-1]).with_suffix(".onnx")
+            exported.write_bytes(b"gate-onnx")
+            return str(exported)
+
+    def model_loader(path):
+        loaded_paths.append(Path(path))
+        return FakeModel()
+
+    exported = _export_onnx_isolated(pt_path, attempt, 640, model_loader=model_loader)
+
+    assert exported == attempt / "exported" / "source.onnx"
+    assert exported.read_bytes() == b"gate-onnx"
+    assert training_onnx.read_bytes() == b"existing-onnx"
+    assert loaded_paths == [attempt / "exported" / "source.pt"]
+    assert not (attempt / "exported" / "source.pt").exists()
 
 
 def test_writes_failed_segmentation_overlay(tmp_path: Path) -> None:

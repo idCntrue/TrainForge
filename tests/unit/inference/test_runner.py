@@ -2,7 +2,13 @@ from pathlib import Path
 
 import numpy as np
 
-from yolo_factory.inference.runner import _detections, ensure_browser_compatible_video, media_for_source, prediction_source
+from yolo_factory.inference.runner import (
+    _detections,
+    ensure_browser_compatible_video,
+    media_for_source,
+    prediction_inputs,
+    prediction_source,
+)
 
 
 class FakeTensor:
@@ -59,6 +65,18 @@ def test_video_and_image_use_scalar_source_while_batch_keeps_list() -> None:
     assert prediction_source({"mode": "video", "sources": ["input.mp4"]}) == "input.mp4"
     assert prediction_source({"mode": "image", "sources": ["input.jpg"]}) == "input.jpg"
     assert prediction_source({"mode": "batch", "sources": ["a.jpg", "b.jpg"]}) == ["a.jpg", "b.jpg"]
+
+
+def test_onnx_batch_is_split_into_single_image_prediction_inputs() -> None:
+    manifest = {"mode": "batch", "runtime": "onnx", "sources": ["a.jpg", "b.jpg"]}
+
+    assert prediction_inputs(manifest) == ["a.jpg", "b.jpg"]
+
+
+def test_pt_batch_remains_one_batched_prediction_input() -> None:
+    manifest = {"mode": "batch", "runtime": "pt", "sources": ["a.jpg", "b.jpg"]}
+
+    assert prediction_inputs(manifest) == [["a.jpg", "b.jpg"]]
 
 
 def test_batch_media_is_matched_by_source_stem_not_filesystem_order() -> None:

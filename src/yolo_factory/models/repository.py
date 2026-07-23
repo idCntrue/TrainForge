@@ -7,6 +7,8 @@ from yolo_factory.models.domain import ModelVersion, ModelVersionSpec
 from yolo_factory.registry.database import Registry, session_scope
 from yolo_factory.registry.models import InferenceRunRecord, ModelVersionRecord
 
+ADVISORY_GATES = {"quality_recommended", "mask_consistency"}
+
 
 class InvalidModelTransition(ValueError):
     pass
@@ -40,10 +42,13 @@ class ModelVersionRepository:
         }
         with session_scope(self._registry) as session:
             existing = session.execute(
-                select(ModelVersionRecord.id).where(ModelVersionRecord.training_run_id == spec.training_run_id)
+                select(ModelVersionRecord.id).where(
+                    ModelVersionRecord.name == spec.name.strip(),
+                    ModelVersionRecord.version == spec.version.strip(),
+                )
             ).scalar_one_or_none()
             if existing is not None:
-                raise DuplicateModelRegistration(f"training run is already registered as model {existing}")
+                raise DuplicateModelRegistration(f"model name and version are already registered as model {existing}")
             session.add(ModelVersionRecord(
                 id=model_id,
                 name=spec.name,
@@ -128,8 +133,68 @@ class ModelVersionRepository:
             record.config_json = json.dumps(config, sort_keys=True)
             if gate_report_path is not None:
                 record.gate_report_path = gate_report_path
-            hard_gates = {key: value for key, value in gates.items() if key != "quality_recommended"}
+            hard_gates = {key: value for key, value in gates.items() if key not in ADVISORY_GATES}
             record.status = "candidate" if all(hard_gates.values()) else "blocked"
+        return self.get_required(model_id)
+
+    def activate_gate_run(
+        self,
+        model_id: str,
+        *,
+        gates: dict[str, bool],
+        artifacts: dict[str, dict],
+        environment: dict[str, str],
+        gate_report_path: str,
+    ) -> ModelVersion:
+        with session_scope(self._registry) as session:
+            record = session.get(ModelVersionRecord, model_id)
+            if record is None:
+                raise KeyError(model_id)
+            if record.status == "published":
+                raise InvalidModelTransition("published model gate cannot be replaced")
+            existing = json.loads(record.gates_json)
+            effective_gates = {
+                **gates,
+                "independent_test_available": existing.get("independent_test_available", False),
+                "quality_recommended": existing.get("quality_recommended", False),
+            }
+            config = json.loads(record.config_json)
+            config["artifacts"] = artifacts
+            config["environment"] = environment
+            record.config_json = json.dumps(config, sort_keys=True)
+            record.gates_json = json.dumps(effective_gates, sort_keys=True)
+            record.gate_report_path = gate_report_path
+            if record.status != "archived":
+                hard_gates = {key: value for key, value in effective_gates.items() if key not in ADVISORY_GATES}
+                record.status = "candidate" if all(hard_gates.values()) else "blocked"
+        return self.get_required(model_id)
+
+    def clear_gate_run(self, model_id: str) -> ModelVersion:
+        with session_scope(self._registry) as session:
+            record = session.get(ModelVersionRecord, model_id)
+            if record is None:
+                raise KeyError(model_id)
+            if record.status == "published":
+                raise InvalidModelTransition("published model gate cannot be cleared")
+            existing = json.loads(record.gates_json)
+            gates = {
+                "training": True,
+                "pt": True,
+                "onnx": False,
+                "consistency": False,
+                "mask_consistency": False,
+                "independent_test_available": existing.get("independent_test_available", False),
+                "quality_recommended": existing.get("quality_recommended", False),
+            }
+            config = json.loads(record.config_json)
+            artifacts = config.get("artifacts") or {}
+            config["artifacts"] = {"pt": artifacts["pt"]} if "pt" in artifacts else {}
+            config["environment"] = {}
+            record.config_json = json.dumps(config, sort_keys=True)
+            record.gates_json = json.dumps(gates, sort_keys=True)
+            record.gate_report_path = None
+            if record.status != "archived":
+                record.status = "blocked"
         return self.get_required(model_id)
 
     def publish(self, model_id: str) -> ModelVersion:
@@ -140,7 +205,7 @@ class ModelVersionRepository:
             gates = json.loads(record.gates_json)
             if not gates.get("independent_test_available", False):
                 raise InvalidModelTransition("independent test result is required before publication")
-            hard_gates = {key: value for key, value in gates.items() if key != "quality_recommended"}
+            hard_gates = {key: value for key, value in gates.items() if key not in ADVISORY_GATES}
             if record.status not in {"candidate", "blocked"} or not hard_gates or not all(hard_gates.values()):
                 raise InvalidModelTransition("all release gates must pass before publication")
             record.status = "published"

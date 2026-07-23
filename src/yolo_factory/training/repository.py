@@ -115,7 +115,7 @@ class TrainingRunRepository:
             if record.status in {"queued", "running", "evaluating", "exporting", "verifying"}:
                 raise ActiveTrainingRunDeletion("active training runs cannot be deleted")
             model_id = session.execute(
-                select(ModelVersionRecord.id).where(ModelVersionRecord.training_run_id == run_id)
+                select(ModelVersionRecord.id).where(ModelVersionRecord.training_run_id == run_id).limit(1)
             ).scalar_one_or_none()
             if model_id is not None:
                 raise ReferencedTrainingRunDeletion(f"training run is referenced by model {model_id}")

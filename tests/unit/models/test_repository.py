@@ -71,3 +71,67 @@ def test_requires_all_release_gates_before_publish(tmp_path: Path) -> None:
 
     assert published.status == "published"
     assert archived.status == "archived"
+
+
+def test_mask_consistency_is_retained_as_non_blocking_advisory(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    repository.create(_spec(), model_id="model-001")
+
+    updated = repository.update_gates("model-001", {
+        "training": True,
+        "pt": True,
+        "onnx": True,
+        "consistency": True,
+        "mask_consistency": False,
+    })
+    published = repository.publish("model-001")
+
+    assert updated.gates["mask_consistency"] is False
+    assert updated.status == "candidate"
+    assert published.status == "published"
+
+
+def test_activates_an_older_gate_snapshot(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    repository.create(_spec(), model_id="model-001")
+
+    activated = repository.activate_gate_run(
+        "model-001",
+        gates={"training": True, "pt": True, "onnx": True, "consistency": True, "mask_consistency": False},
+        artifacts={"pt": {"path": "best.pt"}, "onnx": {"path": "older/source.onnx"}},
+        environment={"ultralytics": "8.4.95"},
+        gate_report_path="older/result.json",
+    )
+
+    assert activated.status == "candidate"
+    assert activated.gate_report_path == "older/result.json"
+    assert activated.artifacts["onnx"]["path"] == "older/source.onnx"
+    assert activated.gates["mask_consistency"] is False
+
+
+def test_clears_last_gate_run_but_preserves_training_and_quality_evidence(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    repository.create(_spec(), model_id="model-001")
+    repository.activate_gate_run(
+        "model-001",
+        gates={"training": True, "pt": True, "onnx": True, "consistency": True, "mask_consistency": False},
+        artifacts={"pt": {"path": "best.pt"}, "onnx": {"path": "current/source.onnx"}},
+        environment={"ultralytics": "8.4.95"},
+        gate_report_path="current/result.json",
+    )
+
+    cleared = repository.clear_gate_run("model-001")
+
+    assert cleared.status == "blocked"
+    assert cleared.gates == {
+        "training": True,
+        "pt": True,
+        "onnx": False,
+        "consistency": False,
+        "mask_consistency": False,
+        "independent_test_available": True,
+        "quality_recommended": True,
+    }
+    assert cleared.artifacts == {"pt": {"path": "best.pt"}}
+    assert cleared.environment == {}
+    assert cleared.gate_report_path is None
