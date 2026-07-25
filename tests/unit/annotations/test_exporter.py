@@ -1,4 +1,5 @@
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,8 @@ from PIL import Image
 from yolo_factory.annotations.exporter import export_reviewed_annotations
 from yolo_factory.annotations.repository import AnnotationRepository
 from yolo_factory.registry.database import create_registry, session_scope
-from yolo_factory.registry.models import FrameAsset, FrameBatch, Task, VideoAsset, VideoCollection
+from yolo_factory.common.hashing import sha256_file
+from yolo_factory.registry.models import AnnotationExport, FrameAsset, FrameBatch, Task, VideoAsset, VideoCollection
 
 
 def test_exports_reviewed_segment_annotations_as_deterministic_yolo(tmp_path: Path) -> None:
@@ -36,6 +38,42 @@ def test_exports_reviewed_segment_annotations_as_deterministic_yolo(tmp_path: Pa
     assert label.read_text(encoding="utf-8") == "0 0.100000 0.100000 0.900000 0.100000 0.500000 0.900000\n"
     assert (result.extracted_root / "train" / "images" / "frame.jpg").is_file()
     assert result.sample_count == 1
+    archive = result.extracted_root.parent / "original.zip"
+    with zipfile.ZipFile(archive) as bundle:
+        assert set(bundle.namelist()) >= {
+            "data.yaml",
+            "classes.txt",
+            "source-index.json",
+            "train/images/frame.jpg",
+            "train/labels/frame.txt",
+        }
+    with session_scope(registry) as session:
+        record = session.get(AnnotationExport, result.export_id)
+        assert record.sha256 == sha256_file(archive)
 
     with pytest.raises(ValueError, match="already exists"):
         export_reviewed_annotations("inspection", "native-1", storage, registry)
+
+
+def test_exports_reviewed_empty_annotation_as_negative_sample(tmp_path: Path) -> None:
+    storage = tmp_path / "storage"
+    image_path = storage / "frames" / "negative.jpg"
+    image_path.parent.mkdir(parents=True)
+    Image.new("RGB", (32, 32), "black").save(image_path)
+    registry = create_registry(storage / "registry" / "factory.db")
+    with session_scope(registry) as session:
+        session.add(Task(id="inspection", task_type="detect", annotation_format="yolo-detect", classes_json='["door"]'))
+        session.add(VideoCollection(id="collection", task_id="inspection"))
+    with session_scope(registry) as session:
+        session.add(VideoAsset(id="video", collection_id="collection", original_name="v.mp4", stored_path="v.mp4", sha256="a" * 64, size_bytes=1))
+        session.add(FrameBatch(id="batch", collection_id="collection", manifest_path="manifest.yaml"))
+    with session_scope(registry) as session:
+        session.add(FrameAsset(id="negative", batch_id="batch", video_id="video", stored_path=str(image_path), sha256="b" * 64, timestamp_ms=0, frame_index=0, status="selected"))
+    repository = AnnotationRepository(registry)
+    repository.sync_selected_frames("inspection")
+    reviewed = repository.set_status("negative", revision=0, status="reviewed")
+
+    result = export_reviewed_annotations("inspection", "negative-1", storage, registry)
+
+    assert reviewed.status == "reviewed"
+    assert (result.extracted_root / "train" / "labels" / "negative.txt").read_bytes() == b""

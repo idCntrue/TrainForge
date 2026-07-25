@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,19 @@ def test_candidate_survives_registry_reopen(tmp_path: Path) -> None:
 
     assert loaded == created
     assert loaded.status == "candidate"
+
+
+def test_lists_models_with_status_limit_and_offset(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    for index in range(4):
+        repository.create(
+            replace(_spec(), name=f"lights-detect-{index}", version=f"1.0.{index}"),
+            model_id=f"model-{index}",
+        )
+
+    assert [model.id for model in repository.list(status="candidate", limit=2, offset=1)] == [
+        "model-2", "model-1"
+    ]
 
 
 def test_requires_all_release_gates_before_publish(tmp_path: Path) -> None:

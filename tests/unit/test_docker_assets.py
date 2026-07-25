@@ -130,12 +130,14 @@ def test_docker_environment_documents_training_resource_limits() -> None:
         "GPU_TRAINING_MAX_IMAGE_SIZE=1280",
         "GPU_ALLOWED_DEVICES=",
         "YOLO_FACTORY_MAX_UPLOAD_BYTES=2147483648",
+        "MODEL_GATE_TIMEOUT_SECONDS=1200",
         "TRAINING_MIN_FREE_DISK_GB=8",
         "TRAINING_MIN_FREE_DISK_PERCENT=10",
         "CORS_ALLOWED_ORIGINS=",
     ]:
         assert setting in environment
     assert "YOLO_FACTORY_MAX_UPLOAD_BYTES: ${YOLO_FACTORY_MAX_UPLOAD_BYTES:-2147483648}" in _text("compose.yaml")
+    assert "MODEL_GATE_TIMEOUT_SECONDS: ${MODEL_GATE_TIMEOUT_SECONDS:-1200}" in _text("compose.yaml")
     assert "client_max_body_size 2g;" in _text("docker/nginx.conf")
 
 

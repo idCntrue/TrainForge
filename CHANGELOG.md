@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.2.5 - 2026-07-26
+
+- Persist background jobs in SQLite, recover interrupted work after API restarts, and coordinate heavy operations through expiring database leases.
+- Add bounded model-gate execution with subprocess cancellation and a configurable timeout.
+- Make video append operations atomic across managed files, frame records, video records, and batch manifests.
+- Export portable native-annotation archives with images, labels, `classes.txt`, `data.yaml`, a source index, and verified SHA-256 metadata; reviewed empty annotations are retained as negative samples.
+- Reject ZIP imports that exceed file-count, expanded-size, compression-ratio, or path-depth limits before extraction.
+- Reduce SQLite lock contention with WAL, normal synchronous mode, a five-second busy timeout, and bounded list queries.
+- Add compatible status/limit/offset filtering for training runs, inference runs, model versions, and background jobs.
+- Cache unchanged dataset image hashes and decode results while continuing to revalidate labels and class statistics on every release.
+- Unify backend, frontend, API, deployment examples, and bilingual documentation version metadata at 0.2.5.
+
 ## 0.2.2 - 2026-07-26
 
 - Reconcile training and inference subprocesses that exit without a valid terminal event or completed result, preventing permanently active runs.

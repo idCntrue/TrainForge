@@ -208,8 +208,8 @@ class AnnotationRepository:
             if status not in {"pending", "annotated", "reviewed"}:
                 raise InvalidAnnotationTransition("unknown annotation status")
             shape_exists = session.scalar(select(AnnotationShapeRecord.id).where(AnnotationShapeRecord.frame_id == frame_id).limit(1)) is not None
-            if status in {"annotated", "reviewed"} and not shape_exists:
-                raise InvalidAnnotationTransition("annotated and reviewed images require shapes")
+            if status == "annotated" and not shape_exists:
+                raise InvalidAnnotationTransition("annotated images require shapes")
             if image.status == "reviewed" and status != "annotated":
                 raise InvalidAnnotationTransition("reviewed image can only return to annotated")
             image.status = status

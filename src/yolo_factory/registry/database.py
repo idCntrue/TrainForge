@@ -27,12 +27,18 @@ def _enable_sqlite_constraints(
     cursor = dbapi_connection.cursor()
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
     cursor.close()
 
 
 def create_registry(path: Path) -> Registry:
     path.parent.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"sqlite:///{path.as_posix()}", future=True)
+    engine = create_engine(
+        f"sqlite:///{path.as_posix()}",
+        connect_args={"timeout": 5.0},
+        future=True,
+    )
     event.listen(engine, "connect", _enable_sqlite_constraints)
     Base.metadata.create_all(engine)
     migrate_frame_lifecycle(path)

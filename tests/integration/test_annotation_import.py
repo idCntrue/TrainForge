@@ -6,7 +6,7 @@ import pytest
 import yaml
 from PIL import Image
 
-from yolo_factory.annotations.import_service import import_roboflow_export
+from yolo_factory.annotations.import_service import ZipExtractionPolicy, _extract_safely, import_roboflow_export
 from yolo_factory.config.models import TaskConfig
 from yolo_factory.registry.database import create_registry, session_scope
 from yolo_factory.registry.models import Task
@@ -171,3 +171,19 @@ def test_rejects_zip_slip_member(tmp_path: Path) -> None:
             tmp_path / "storage",
             registry,
         )
+
+
+def test_rejects_archive_that_exceeds_file_count_quota(tmp_path: Path) -> None:
+    archive_path = tmp_path / "many.zip"
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("one.txt", b"1")
+        archive.writestr("two.txt", b"2")
+
+    with pytest.raises(ValueError, match="file count"):
+        _extract_safely(
+            archive_path,
+            tmp_path / "extracted",
+            policy=ZipExtractionPolicy(max_files=1),
+        )
+
+    assert not (tmp_path / "extracted" / "one.txt").exists()

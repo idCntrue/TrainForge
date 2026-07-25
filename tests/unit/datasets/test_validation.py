@@ -4,6 +4,7 @@ from PIL import Image
 
 from yolo_factory.config.models import TaskConfig
 from yolo_factory.datasets.validation import validate_dataset
+import yolo_factory.datasets.validation as validation_module
 
 
 def _task(task_type: str = "detect") -> TaskConfig:
@@ -68,3 +69,40 @@ def test_reports_duplicate_image_hashes_across_splits(tmp_path: Path) -> None:
     assert report.has_errors
     assert report.report_path.exists()
     assert report.statistics_path.exists()
+
+
+def test_reuses_cached_hash_and_decode_for_unchanged_images(tmp_path: Path, monkeypatch) -> None:
+    image = _sample(tmp_path, "train", "red", "0 0.5 0.5 0.2 0.2")
+    validate_dataset(tmp_path, _task())
+
+    def unexpected_hash(path: Path) -> str:
+        raise AssertionError(f"unexpected rehash: {path}")
+
+    def unexpected_open(*args, **kwargs):
+        raise AssertionError("unexpected image decode")
+
+    monkeypatch.setattr(validation_module, "sha256_file", unexpected_hash)
+    monkeypatch.setattr(validation_module.Image, "open", unexpected_open)
+
+    report = validate_dataset(tmp_path, _task())
+
+    assert report.sample_count == 1
+    assert image.exists()
+
+
+def test_invalidates_cached_image_when_file_changes(tmp_path: Path, monkeypatch) -> None:
+    image = _sample(tmp_path, "train", "red", "0 0.5 0.5 0.2 0.2")
+    validate_dataset(tmp_path, _task())
+    original_hash = validation_module.sha256_file
+    calls: list[Path] = []
+
+    Image.new("RGB", (32, 32), "blue").save(image)
+
+    def observed_hash(path: Path) -> str:
+        calls.append(path)
+        return original_hash(path)
+
+    monkeypatch.setattr(validation_module, "sha256_file", observed_hash)
+    validate_dataset(tmp_path, _task())
+
+    assert calls == [image]

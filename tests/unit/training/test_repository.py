@@ -59,6 +59,14 @@ def test_lists_runs_by_status_newest_first(tmp_path: Path) -> None:
     assert [run.id for run in repository.list(status="running")] == ["run-002"]
 
 
+def test_lists_runs_with_limit_and_offset(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    for index in range(4):
+        repository.create(_spec(), run_id=f"run-{index}")
+
+    assert [run.id for run in repository.list(limit=2, offset=1)] == ["run-2", "run-1"]
+
+
 def test_advances_through_release_gate_states(tmp_path: Path) -> None:
     repository = _repository(tmp_path / "factory.db")
     repository.create(_spec(), run_id="run-001")

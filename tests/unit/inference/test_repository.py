@@ -44,3 +44,17 @@ def test_inference_run_survives_reopen_and_persists_result(tmp_path: Path) -> No
     assert reopened["pid"] == 4321
     assert reopened["run_directory"] == "runs/inference-001"
     assert [run["id"] for run in InferenceRunRepository(create_registry(database)).list()] == ["inference-001"]
+
+def test_lists_inference_runs_with_status_limit_and_offset(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    for index in range(4):
+        run = repository.create(
+            run_id=f"inference-{index}", mode="image", runtime="pt",
+            sources=["sample.jpg"], confidence=0.25, model_version_id="model-001",
+        )
+        if index == 3:
+            repository.update(run["id"], "completed", progress=100, message="done")
+
+    assert [run["id"] for run in repository.list(status="queued", limit=2, offset=1)] == [
+        "inference-1", "inference-0"
+    ]

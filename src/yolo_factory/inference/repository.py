@@ -29,9 +29,26 @@ class InferenceRunRepository:
                 raise KeyError(run_id)
             return _to_dict(record)
 
-    def list(self) -> list[dict]:
+    def list(
+        self,
+        *,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[dict]:
+        statement = select(InferenceRunRecord)
+        if status is not None:
+            statement = statement.where(InferenceRunRecord.status == status)
+        statement = statement.order_by(
+            InferenceRunRecord.created_at.desc(),
+            InferenceRunRecord.id.desc(),
+        )
+        if offset:
+            statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
         with session_scope(self._registry) as session:
-            return [_to_dict(record) for record in session.scalars(select(InferenceRunRecord).order_by(InferenceRunRecord.created_at.desc()))]
+            return [_to_dict(record) for record in session.scalars(statement)]
 
     def update(self, run_id: str, status: str, *, progress: float, message: str, output_directory: str | None = None, result_path: str | None = None, pid: int | None = None, run_directory: str | None = None) -> dict:
         with session_scope(self._registry) as session:

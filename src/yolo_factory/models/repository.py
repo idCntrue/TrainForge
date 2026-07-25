@@ -80,10 +80,23 @@ class ModelVersionRepository:
             raise KeyError(model_id)
         return model
 
-    def list(self, *, status: str | None = None) -> list[ModelVersion]:
-        statement = select(ModelVersionRecord).order_by(ModelVersionRecord.created_at.desc())
+    def list(
+        self,
+        *,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[ModelVersion]:
+        statement = select(ModelVersionRecord).order_by(
+            ModelVersionRecord.created_at.desc(),
+            ModelVersionRecord.id.desc(),
+        )
         if status:
             statement = statement.where(ModelVersionRecord.status == status)
+        if offset:
+            statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
         with session_scope(self._registry) as session:
             return [_to_domain(record) for record in session.scalars(statement)]
 

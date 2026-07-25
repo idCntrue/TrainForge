@@ -1,5 +1,6 @@
 import json
 import time
+import pytest
 from pathlib import Path
 
 import yaml
@@ -136,6 +137,27 @@ def test_skips_task_duplicate_video_without_extracting_again(tmp_path: Path) -> 
     assert second.imported_video_count == 0
     assert second.duplicate_video_count == 1
     assert len(calls) == 1
+
+
+def test_failed_extraction_leaves_no_video_record_or_managed_file(tmp_path: Path) -> None:
+    storage, registry, source, manifest = _arrange(tmp_path)
+    original_manifest = manifest.read_bytes()
+
+    def failed_extract(*args, **kwargs):
+        raise RuntimeError("decoder failed")
+
+    with pytest.raises(RuntimeError, match="decoder failed"):
+        append_videos_to_batch(
+            "batch-existing", source, storage, registry,
+            interval=1.0, quality=90, extractor=failed_extract,
+        )
+
+    with session_scope(registry) as session:
+        assert session.query(VideoAsset).count() == 1
+        assert session.query(FrameAsset).count() == 1
+    assert manifest.read_bytes() == original_manifest
+    videos_dir = storage / "raw-videos" / "inspection" / "collection-existing" / "videos"
+    assert not videos_dir.exists() or not list(videos_dir.iterdir())
 
 
 def test_batch_video_upload_runs_append_job_and_cleans_staging(

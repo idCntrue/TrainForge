@@ -24,16 +24,50 @@ class AnnotationImportResult:
     sample_count: int
 
 
+@dataclass(frozen=True)
+class ZipExtractionPolicy:
+    max_files: int = 20_000
+    max_single_file_bytes: int = 2 * 1024**3
+    max_total_bytes: int = 10 * 1024**3
+    max_compression_ratio: float = 1000.0
+    max_path_depth: int = 16
+
+
 def _validate_member(member: zipfile.ZipInfo) -> None:
     path = PurePosixPath(member.filename.replace("\\", "/"))
     if path.is_absolute() or ".." in path.parts:
         raise ValueError(f"unsafe ZIP member: {member.filename}")
 
 
-def _extract_safely(archive_path: Path, destination: Path) -> None:
+def _extract_safely(
+    archive_path: Path,
+    destination: Path,
+    *,
+    policy: ZipExtractionPolicy | None = None,
+) -> None:
+    policy = policy or ZipExtractionPolicy()
     with zipfile.ZipFile(archive_path) as archive:
-        for member in archive.infolist():
+        members = archive.infolist()
+        files = [member for member in members if not member.is_dir()]
+        if len(files) > policy.max_files:
+            raise ValueError(f"ZIP file count exceeds limit: {len(files)} > {policy.max_files}")
+        total_bytes = 0
+        for member in members:
             _validate_member(member)
+            path = PurePosixPath(member.filename.replace("\\", "/"))
+            if len(path.parts) > policy.max_path_depth:
+                raise ValueError(f"ZIP member path is too deep: {member.filename}")
+            if member.is_dir():
+                continue
+            if member.file_size > policy.max_single_file_bytes:
+                raise ValueError(f"ZIP member exceeds size limit: {member.filename}")
+            total_bytes += member.file_size
+            if total_bytes > policy.max_total_bytes:
+                raise ValueError("ZIP expanded size exceeds total limit")
+            ratio = member.file_size / max(member.compress_size, 1)
+            if ratio > policy.max_compression_ratio:
+                raise ValueError(f"ZIP compression ratio exceeds limit: {member.filename}")
+        destination.mkdir(parents=True, exist_ok=True)
         archive.extractall(destination)
 
 

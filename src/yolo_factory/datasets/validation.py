@@ -11,6 +11,8 @@ from yolo_factory.config.models import TaskConfig
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 SPLITS = ("train", "val", "test")
+CACHE_NAME = ".validation-cache.json"
+CACHE_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -167,12 +169,34 @@ def _write_outputs(
     return report_path, statistics_path
 
 
+def _read_cache(root: Path) -> dict[str, dict]:
+    try:
+        payload = json.loads((root / CACHE_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return {}
+    if payload.get("version") != CACHE_VERSION or not isinstance(payload.get("images"), dict):
+        return {}
+    return payload["images"]
+
+
+def _write_cache(root: Path, images: dict[str, dict]) -> None:
+    cache_path = root / CACHE_NAME
+    temporary = cache_path.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps({"version": CACHE_VERSION, "images": images}, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(cache_path)
+
+
 def validate_dataset(root: Path, task: TaskConfig) -> ValidationReport:
     root = root.resolve()
     issues: list[ValidationIssue] = []
     counts = [0] * len(task.classes)
     hashes: dict[str, tuple[str, Path]] = {}
     sample_count = 0
+    previous_cache = _read_cache(root)
+    current_cache: dict[str, dict] = {}
 
     for split in SPLITS:
         images_root = root / split / "images"
@@ -182,15 +206,37 @@ def validate_dataset(root: Path, task: TaskConfig) -> ValidationReport:
             if not image_path.is_file() or image_path.suffix.lower() not in IMAGE_EXTENSIONS:
                 continue
             sample_count += 1
-            try:
-                with Image.open(image_path) as image:
-                    image.verify()
-            except (OSError, UnidentifiedImageError):
+            relative_key = image_path.relative_to(root).as_posix()
+            stat = image_path.stat()
+            cached = previous_cache.get(relative_key)
+            unchanged = (
+                isinstance(cached, dict)
+                and cached.get("size") == stat.st_size
+                and cached.get("mtime_ns") == stat.st_mtime_ns
+                and isinstance(cached.get("sha256"), str)
+                and isinstance(cached.get("decode_ok"), bool)
+            )
+            if unchanged:
+                digest = cached["sha256"]
+                decode_ok = cached["decode_ok"]
+            else:
+                decode_ok = True
+                try:
+                    with Image.open(image_path) as image:
+                        image.verify()
+                except (OSError, UnidentifiedImageError):
+                    decode_ok = False
+                digest = sha256_file(image_path)
+            current_cache[relative_key] = {
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+                "sha256": digest,
+                "decode_ok": decode_ok,
+            }
+            if not decode_ok:
                 issues.append(
                     _issue("corrupt_image", image_path, root, "image cannot be decoded")
                 )
-
-            digest = sha256_file(image_path)
             previous = hashes.get(digest)
             if previous is not None and previous[0] != split:
                 issues.append(
@@ -214,6 +260,7 @@ def validate_dataset(root: Path, task: TaskConfig) -> ValidationReport:
             _validate_label(label_path, root, task, counts, issues)
 
     ordered_issues = tuple(sorted(issues, key=lambda item: (item.path, item.code)))
+    _write_cache(root, current_cache)
     report_path, statistics_path = _write_outputs(
         root, task, ordered_issues, sample_count, counts
     )

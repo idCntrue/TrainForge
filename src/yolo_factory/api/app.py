@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from PIL import Image, ImageOps
 from sqlalchemy import delete, func, select
 
-from yolo_factory.api.jobs import job_tracker, JobStatus
+from yolo_factory.api.jobs import job_tracker as fallback_job_tracker, JobStatus, JobTracker
 from yolo_factory.api.task_metadata import decode_task_classes, encode_task_classes
 from yolo_factory.api.queries import (
     dashboard_summary,
@@ -171,6 +171,7 @@ def bg_video_import(job_id: str, args: dict):
 
 
 def bg_frame_extract(job_id: str, args: dict):
+    tracker = args.get("job_tracker", fallback_job_tracker)
     collection_id = args["collection_id"]
     batch_id = args["batch_id"]
     interval = args["interval"]
@@ -207,7 +208,7 @@ def bg_frame_extract(job_id: str, args: dict):
 
     for idx, (video_db_id, stored_path, sha256) in enumerate(videos):
         full_video_path = storage_root / stored_path
-        job_tracker.update_job(
+        tracker.update_job(
             job_id,
             progress=round((idx / total) * 90.0, 1),
             message=f"正在抽帧视频 ({idx + 1}/{total}): {full_video_path.name}"
@@ -223,7 +224,7 @@ def bg_frame_extract(job_id: str, args: dict):
         )
         all_frames.extend(frames)
 
-    job_tracker.update_job(job_id, progress=90.0, message="正在注册帧文件到数据库...")
+    tracker.update_job(job_id, progress=90.0, message="正在注册帧文件到数据库...")
 
     with session_scope(registry) as session:
         for f_idx, frame in enumerate(all_frames):
@@ -247,6 +248,7 @@ def bg_frame_extract(job_id: str, args: dict):
 
 
 def bg_append_batch_videos(job_id: str, args: dict):
+    tracker = args.get("job_tracker", fallback_job_tracker)
     source_dir = Path(args["source_dir"])
     try:
         result = append_videos_to_batch(
@@ -258,7 +260,7 @@ def bg_append_batch_videos(job_id: str, args: dict):
             quality=args["quality"],
         )
         payload = asdict(result)
-        job_tracker.update_job(
+        tracker.update_job(
             job_id,
             progress=95.0,
             message=(
@@ -399,9 +401,13 @@ def create_app(
     )
     task_configs = (task_config_dir or default_task_configs).resolve()
     registry = create_registry(root / "registry" / "factory.db")
-    app = FastAPI(title="YOLO Model Factory", version="0.2.2")
+    job_tracker = JobTracker(registry)
+    job_tracker.recover_interrupted()
+    job_tracker.purge_expired()
+    app = FastAPI(title="YOLO Model Factory", version="0.2.5")
     app.state.storage_root = root
     app.state.registry = registry
+    app.state.job_tracker = job_tracker
     object_storage = LocalObjectStorage(root)
     recycle_bin = FrameRecycleBin(registry, object_storage, operations_root=root / "recycle-bin" / "operations")
     app.state.recycle_bin = recycle_bin
@@ -452,7 +458,10 @@ def create_app(
             resource_policy.validate_memory_snapshot(training_memory_snapshot())
     model_repository = ModelVersionRepository(registry)
     imported_model_repository = ImportedModelRepository(registry)
-    gate_executor = model_gate_executor or LocalModelGateExecutor(root)
+    gate_executor = model_gate_executor or LocalModelGateExecutor(
+        root,
+        timeout_seconds=float(os.environ.get("MODEL_GATE_TIMEOUT_SECONDS", "1200")),
+    )
     app.state.model_repository = model_repository
     app.state.imported_model_repository = imported_model_repository
     app.state.model_gate_executor = gate_executor
@@ -589,7 +598,7 @@ def create_app(
                 shutil.rmtree(path)
             elif path.is_file():
                 path.unlink()
-    heavy_operation_guard = HeavyOperationGuard()
+    heavy_operation_guard = HeavyOperationGuard(registry)
     app.state.heavy_operation_guard = heavy_operation_guard
 
     def heavy_operation(name: str):
@@ -985,8 +994,12 @@ def create_app(
             raise
 
     @app.get("/api/training-runs", response_model=list[TrainingRunResponse])
-    def training_runs() -> list[TrainingRunResponse]:
-        return [_training_response(run) for run in training_repository.list()]
+    def training_runs(
+        status: str | None = None,
+        limit: int | None = Query(default=None, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ) -> list[TrainingRunResponse]:
+        return [_training_response(run) for run in training_repository.list(status=status, limit=limit, offset=offset)]
 
     @app.get("/api/training-runs/{run_id}", response_model=TrainingRunResponse)
     def training_run(run_id: str) -> TrainingRunResponse:
@@ -1256,8 +1269,12 @@ def create_app(
         return _model_response(model)
 
     @app.get("/api/model-versions", response_model=list[ModelVersionResponse])
-    def model_versions() -> list[ModelVersionResponse]:
-        return [_model_response(model) for model in model_repository.list()]
+    def model_versions(
+        status: str | None = None,
+        limit: int | None = Query(default=None, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ) -> list[ModelVersionResponse]:
+        return [_model_response(model) for model in model_repository.list(status=status, limit=limit, offset=offset)]
 
     @app.get("/api/model-versions/{model_id}", response_model=ModelVersionResponse)
     def model_version(model_id: str) -> ModelVersionResponse:
@@ -1417,6 +1434,12 @@ def create_app(
             gate_report_path=str(report_path),
         )
         return _model_response(updated)
+
+    @app.post("/api/model-versions/{model_id}/gates/cancel", status_code=202)
+    def cancel_model_gates(model_id: str) -> dict:
+        if not hasattr(gate_executor, "cancel") or not gate_executor.cancel(model_id):
+            raise HTTPException(status_code=409, detail="model gate is not currently running")
+        return {"model_id": model_id, "status": "cancellation_requested"}
 
     @app.post("/api/model-versions/{model_id}/publish", response_model=ModelVersionResponse)
     def publish_model(model_id: str) -> ModelVersionResponse:
@@ -1701,8 +1724,12 @@ def create_app(
             raise
 
     @app.get("/api/inference-runs", response_model=list[InferenceRunResponse])
-    def inference_runs() -> list[InferenceRunResponse]:
-        return [_inference_response(run) for run in inference_repository.list()]
+    def inference_runs(
+        status: str | None = None,
+        limit: int | None = Query(default=None, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ) -> list[InferenceRunResponse]:
+        return [_inference_response(run) for run in inference_repository.list(status=status, limit=limit, offset=offset)]
 
     @app.get("/api/inference-runs/{run_id}", response_model=InferenceRunResponse)
     def inference_run(run_id: str) -> InferenceRunResponse:
@@ -2294,6 +2321,7 @@ def create_app(
                 "storage_root": root,
                 "registry": registry,
                 "task_config": task_config,
+                "job_tracker": job_tracker,
             },
             message=f"正在从目录导入视频到 {req.collection_id}"
         )
@@ -2347,6 +2375,7 @@ def create_app(
                 "storage_root": root,
                 "registry": registry,
                 "task_config": task_config,
+                "job_tracker": job_tracker,
                 "cleanup_source": True,
             },
             message=f"正在归档 {len(files)} 个上传视频到 {collection_id}",
@@ -2400,6 +2429,7 @@ def create_app(
                 "registry": registry,
                 "interval": interval,
                 "quality": quality,
+                "job_tracker": job_tracker,
             },
             message=f"正在向批次 {batch_id} 追加 {len(files)} 个视频并抽帧",
         )
@@ -2408,6 +2438,14 @@ def create_app(
             "uploaded_count": len(files),
             "filenames": filenames,
         }
+
+    @app.get("/api/jobs", response_model=list[JobStatus])
+    def list_jobs(
+        status: str | None = None,
+        limit: int | None = Query(default=None, ge=1, le=500),
+        offset: int = Query(default=0, ge=0),
+    ) -> list[JobStatus]:
+        return job_tracker.list_jobs(status=status, limit=limit, offset=offset)
 
     @app.get("/api/jobs/{job_id}", response_model=JobStatus)
     def get_job_status(job_id: str) -> JobStatus:
@@ -2434,7 +2472,8 @@ def create_app(
                 "quality": req.quality,
                 "storage_root": root,
                 "registry": registry,
-                "task_id": task_id
+                "task_id": task_id,
+                "job_tracker": job_tracker,
             },
             message=f"正在为采集批次 {req.collection_id} 抽帧"
         )

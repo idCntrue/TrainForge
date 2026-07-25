@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="AGPL-3.0 License"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.2-2563EB.svg" alt="Version 0.2.2"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.5-2563EB.svg" alt="Version 0.2.5"></a>
   <a href="https://github.com/idCntrue/TrainForge/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/idCntrue/TrainForge/ci.yml?branch=main&label=CI" alt="CI status"></a>
   <a href="https://github.com/idCntrue/TrainForge/stargazers"><img src="https://img.shields.io/github/stars/idCntrue/TrainForge?style=flat" alt="GitHub stars"></a>
   <img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?logo=python&logoColor=white" alt="Python 3.10">
@@ -223,6 +223,7 @@ cp .env.docker.example .env
 | `GPU_DETECT_MAX_BATCH` | `8` | GPU 检测最大 Batch |
 | `GPU_SEGMENT_MAX_BATCH` | `2` | GPU 分割最大 Batch |
 | `YOLO_FACTORY_MAX_UPLOAD_BYTES` | `2147483648` | 单文件上传上限 |
+| `MODEL_GATE_TIMEOUT_SECONDS` | `1200` | 单次模型门禁最大运行秒数；超时后终止其子进程 |
 | `TRAINING_MIN_FREE_DISK_GB` | `8` | 训练前最小空闲 GiB；仍建议保持 10-12 GiB 以上 |
 | `TRAINING_MIN_FREE_DISK_PERCENT` | `10` | 训练前最小空闲百分比 |
 | `TRAINING_MIN_AVAILABLE_COMMIT_GB` | `8` | Windows 启动训练前要求的剩余提交内存；仅在可读取 Windows 指标时生效 |

@@ -87,7 +87,13 @@ class TrainingRunRepository:
             raise KeyError(run_id)
         return run
 
-    def list(self, *, status: str | None = None) -> list[TrainingRun]:
+    def list(
+        self,
+        *,
+        status: str | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[TrainingRun]:
         statement = select(TrainingRunRecord)
         if status is not None:
             statement = statement.where(TrainingRunRecord.status == status)
@@ -95,6 +101,10 @@ class TrainingRunRepository:
             TrainingRunRecord.created_at.desc(),
             TrainingRunRecord.id.desc(),
         )
+        if offset:
+            statement = statement.offset(offset)
+        if limit is not None:
+            statement = statement.limit(limit)
         with session_scope(self._registry) as session:
             return [_to_domain(record) for record in session.scalars(statement)]
 
