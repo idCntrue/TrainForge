@@ -14,6 +14,7 @@ from yolo_factory.training.repository import TrainingRunRepository
 from yolo_factory.training.resource_cleanup import TrainingResourceCleanupResult
 from yolo_factory.training.resource_policy import TrainingResourcePolicy
 from yolo_factory.training.ultralytics_adapter import prepare_dataset_view
+from yolo_factory.common.process_identity import ProcessOwnershipError
 
 
 def _storage(tmp_path: Path) -> Path:
@@ -49,6 +50,20 @@ def _request() -> dict:
         "image_size": 640,
         "device": "cuda:0",
     }
+
+
+def test_cancel_reports_process_identity_conflict(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    app = create_app(storage_root=storage, training_engine="simulation")
+    app.state.training_executor.cancel = lambda run_id: (_ for _ in ()).throw(
+        ProcessOwnershipError(f"Refusing to terminate persisted PID for {run_id}")
+    )
+
+    with TestClient(app) as client:
+        response = client.post("/api/training-runs/run-reused-pid/cancel")
+
+    assert response.status_code == 409
+    assert "Refusing to terminate" in response.json()["detail"]
 
 
 def test_training_fixture_matches_production_layout_and_copies_labels(tmp_path: Path) -> None:

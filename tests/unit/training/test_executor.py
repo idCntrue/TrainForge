@@ -219,6 +219,118 @@ def test_refresh_interrupts_restarted_run_after_persisted_process_disappears(
     assert refreshed.message == "Runner process is no longer available"
 
 
+def test_refresh_fails_clean_exit_without_terminal_event_and_forgets_process(
+    tmp_path: Path,
+) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    repository.create(_spec(), run_id="run-incomplete")
+    run_directory = tmp_path / "storage" / "training-runs" / "run-incomplete"
+    run_directory.mkdir(parents=True)
+    repository.transition(
+        "run-incomplete",
+        "running",
+        phase="training",
+        pid=123,
+        run_directory=str(run_directory),
+    )
+    executor = LocalTrainingExecutor(repository, tmp_path / "storage")
+
+    class CleanExitProcess:
+        returncode = 0
+
+        def poll(self):
+            return 0
+
+    executor._processes["run-incomplete"] = CleanExitProcess()
+
+    refreshed = executor.refresh("run-incomplete")
+
+    assert refreshed.status == "failed"
+    assert refreshed.exit_code == 0
+    assert "without a terminal event" in refreshed.message
+    assert "run-incomplete" not in executor._processes
+
+
+def test_cancel_restarted_run_refuses_mismatched_process_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    repository.create(_spec(), run_id="run-reused-pid")
+    run_directory = tmp_path / "storage" / "training-runs" / "run-reused-pid"
+    run_directory.mkdir(parents=True)
+    (run_directory / "process.json").write_text(
+        json.dumps({"pid": 4321, "token": "expected-token"}),
+        encoding="utf-8",
+    )
+    repository.transition(
+        "run-reused-pid",
+        "running",
+        phase="training",
+        pid=4321,
+        run_directory=str(run_directory),
+    )
+    monkeypatch.setattr(executor_module, "_process_exists", lambda pid: True)
+    monkeypatch.setattr(executor_module, "_process_command_line", lambda pid: "python unrelated.py")
+    terminated: list[int] = []
+    monkeypatch.setattr(executor_module, "_terminate_process_tree", lambda pid, **kwargs: terminated.append(pid))
+    executor = LocalTrainingExecutor(repository, tmp_path / "storage")
+
+    with pytest.raises(executor_module.ProcessOwnershipError):
+        executor.cancel("run-reused-pid")
+
+    assert terminated == []
+    assert repository.get_required("run-reused-pid").status == "running"
+
+
+def test_refresh_does_not_reapply_already_consumed_progress_event(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "factory.db")
+    repository.create(_spec(), run_id="run-incremental")
+    run_directory = tmp_path / "storage" / "training-runs" / "run-incremental"
+    run_directory.mkdir(parents=True)
+    (run_directory / "process.json").write_text('{"pid": 123}', encoding="utf-8")
+    (run_directory / "progress.jsonl").write_text(
+        json.dumps({
+            "status": "running",
+            "phase": "training",
+            "progress": 25,
+            "message": "Epoch 1",
+        }) + "\n",
+        encoding="utf-8",
+    )
+    repository.transition(
+        "run-incremental",
+        "running",
+        phase="training",
+        pid=123,
+        run_directory=str(run_directory),
+    )
+    executor = LocalTrainingExecutor(repository, tmp_path / "storage")
+
+    class RunningProcess:
+        returncode = None
+
+        def poll(self):
+            return None
+
+    executor._processes["run-incremental"] = RunningProcess()
+    updates = 0
+    original_update = repository.update_runtime
+
+    def counted_update(*args, **kwargs):
+        nonlocal updates
+        updates += 1
+        return original_update(*args, **kwargs)
+
+    repository.update_runtime = counted_update
+
+    executor.refresh("run-incremental")
+    executor.refresh("run-incremental")
+
+    assert updates == 1
+    metadata = json.loads((run_directory / "process.json").read_text(encoding="utf-8"))
+    assert metadata["progress_offset"] == (run_directory / "progress.jsonl").stat().st_size
+
+
 def test_windows_process_tree_termination_uses_taskkill(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = []
 

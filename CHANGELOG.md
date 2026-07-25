@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.2.2 - 2026-07-26
+
+- Reconcile training and inference subprocesses that exit without a valid terminal event or completed result, preventing permanently active runs.
+- Protect restart-time cancellation with persisted process tokens and live command-line identity checks so reused PIDs cannot terminate unrelated processes.
+- Release completed subprocess references promptly to avoid accumulating process handles during long-running desktop and server sessions.
+- Consume training and inference JSONL progress incrementally with durable byte cursors, partial-line safety, and file-replacement recovery.
+- Replace overlapping interval polling with abortable, completion-driven polling, background-tab throttling, and bounded retry backoff.
+- Unify backend, frontend, API, and bilingual documentation version metadata at 0.2.2.
+
 ## 0.2.0 - 2026-07-23
 
 - Add portable published-model release bundles containing validated PT/ONNX weights, ordered class files, deployment metadata, and SHA-256 checksums.

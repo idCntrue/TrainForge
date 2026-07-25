@@ -123,6 +123,7 @@ def run(manifest_path: Path) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--manifest", required=True, type=Path)
+    parser.add_argument("--process-token")
     manifest = parser.parse_args().manifest
     try:
         return run(manifest)

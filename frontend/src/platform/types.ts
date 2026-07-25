@@ -164,5 +164,5 @@ export interface PlatformRepository {
 }
 
 export type TrainingRepository = Pick<PlatformRepository, 'listTrainingRuns' | 'getTrainingRun' | 'createTrainingRun' | 'cancelTrainingRun' | 'deleteTrainingRun'> & {
-  refreshTrainingRun(id: string): Promise<TrainingRun>
+  refreshTrainingRun(id: string, signal?: AbortSignal): Promise<TrainingRun>
 }

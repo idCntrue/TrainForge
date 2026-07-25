@@ -84,8 +84,8 @@ export function createApiTrainingRepository(client: TrainingRepositoryClient): T
         augmentation: input.augmentation,
       }))
     },
-    async refreshTrainingRun(id) {
-      return mapTrainingRun(await client.refreshTrainingRun(id))
+    async refreshTrainingRun(id, signal) {
+      return mapTrainingRun(await client.refreshTrainingRun(id, signal))
     },
     async cancelTrainingRun(id) {
       return mapTrainingRun(await client.cancelTrainingRun(id))

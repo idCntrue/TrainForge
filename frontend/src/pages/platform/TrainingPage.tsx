@@ -23,6 +23,7 @@ import { createRequestId } from '../../requestId'
 import { MobileRecordCard } from '../../components/mobile/MobileRecordCard'
 import { useMobileViewport } from '../../responsive/useMobileViewport'
 import { nextPatchVersion } from './modelVersioning'
+import { startAdaptivePolling } from '../../polling'
 
 const taskOptions = ['detect', 'segment'].map((value) => ({ value, label: value.toUpperCase() }))
 const statusOptions = ['queued', 'running', 'evaluating', 'exporting', 'verifying', 'completed', 'failed', 'cancelled', 'interrupted'].map((value) => ({ value, label: statusLabel(value) }))
@@ -77,16 +78,25 @@ export default function TrainingPage() {
       .then(([nextReleases, nextTasks]) => { setReleases(nextReleases.filter((release) => release.status === 'published')); setTasks(nextTasks) })
       .catch((error) => message.error(error instanceof Error ? error.message : '加载数据集版本失败'))
   }, [])
+  const activeRunIds = runs
+    .filter((run) => activeStatuses.includes(run.status))
+    .map((run) => run.id)
+    .sort()
+    .join(',')
   useEffect(() => {
-    const activeRuns = runs.filter((run) => activeStatuses.includes(run.status))
-    if (activeRuns.length === 0) return
-    const timer = window.setInterval(() => {
-      void Promise.all(activeRuns.map((run) => platformRepository.refreshTrainingRun(run.id)))
-        .then(() => load())
-        .catch((error) => message.error(error instanceof Error ? error.message : '刷新训练进度失败'))
-    }, 2000)
-    return () => window.clearInterval(timer)
-  }, [load, runs])
+    const ids = activeRunIds ? activeRunIds.split(',') : []
+    if (ids.length === 0) return
+    return startAdaptivePolling(async (signal) => {
+      const refreshed = await Promise.all(ids.map((id) => platformRepository.refreshTrainingRun(id, signal)))
+      const byId = new Map(refreshed.map((run) => [run.id, run]))
+      setRuns((current) => current.map((run) => byId.get(run.id) ?? run))
+      setSelected((current) => current ? byId.get(current.id) ?? current : undefined)
+    }, {
+      foregroundMs: 2000,
+      backgroundMs: 15000,
+      onError: (error) => message.error(error instanceof Error ? error.message : '刷新训练进度失败'),
+    })
+  }, [activeRunIds])
   useEffect(() => {
     if (!selected) { setDetails(undefined); return }
     setDetailsLoading(true)

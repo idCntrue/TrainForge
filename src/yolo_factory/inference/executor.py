@@ -4,9 +4,15 @@ import signal
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
-from yolo_factory.common.json_lines import read_json_lines
+from yolo_factory.common.json_lines import read_json_lines_since
+from yolo_factory.common.process_identity import (
+    ProcessOwnershipError,
+    process_command_line as _process_command_line,
+    verify_persisted_process,
+)
 from yolo_factory.inference.repository import InferenceRunRepository
 
 
@@ -31,32 +37,64 @@ class LocalInferenceExecutor:
         manifest.write_text(json.dumps({"run_id": run_id, **payload}, ensure_ascii=False, indent=2), encoding="utf-8")
         log_stream = (directory / "runner.log").open("ab")
         creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
+        process_token = uuid.uuid4().hex
         process = subprocess.Popen(
-            [self._python, "-m", "yolo_factory.inference.runner", "--manifest", str(manifest)],
+            [
+                self._python,
+                "-m",
+                "yolo_factory.inference.runner",
+                "--manifest",
+                str(manifest),
+                "--process-token",
+                process_token,
+            ],
             stdout=log_stream,
             stderr=subprocess.STDOUT,
             creationflags=creationflags,
         )
         log_stream.close()
         self._processes[run_id] = process
-        (directory / "process.json").write_text(json.dumps({"pid": process.pid, "python": self._python}, sort_keys=True), encoding="utf-8")
+        (directory / "process.json").write_text(
+            json.dumps(
+                {
+                    "pid": process.pid,
+                    "python": self._python,
+                    "token": process_token,
+                    "manifest_path": str(manifest.resolve()),
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
         return self._repository.update(run_id, "running", progress=2, message="Inference runner started", pid=process.pid, run_directory=str(directory))
 
     def refresh(self, run_id: str) -> dict:
         run = self._repository.get_required(run_id)
         if run["status"] not in {"queued", "running"}:
+            process = self._processes.get(run_id)
+            if process is not None and process.poll() is not None:
+                self._processes.pop(run_id, None)
             return run
         run_directory = Path(run["run_directory"]) if run.get("run_directory") else None
         if run_directory is not None:
             progress_path = run_directory / "progress.jsonl"
             if progress_path.is_file():
-                events = read_json_lines(progress_path)
-                if events:
-                    event = events[-1]
+                process_metadata_path = run_directory / "process.json"
+                process_metadata = _read_json(process_metadata_path)
+                batch = read_json_lines_since(
+                    progress_path,
+                    offset=int(process_metadata.get("progress_offset", 0)),
+                    identity=process_metadata.get("progress_identity"),
+                )
+                if batch.events:
+                    event = batch.events[-1]
                     status = event.get("status", "running")
                     result_path = run_directory / "result.json"
                     output_directory = run_directory if status == "completed" else None
-                    return self._repository.update(
+                    if status == "completed" and not result_path.is_file():
+                        status = "failed"
+                        event["message"] = "Inference runner reported completion without a completed result"
+                    updated = self._repository.update(
                         run_id,
                         status,
                         progress=float(event.get("progress", run["progress"])),
@@ -64,9 +102,28 @@ class LocalInferenceExecutor:
                         output_directory=str(output_directory) if output_directory else None,
                         result_path=str(result_path) if status == "completed" and result_path.is_file() else None,
                     )
+                    process_metadata.update({
+                        "progress_offset": batch.offset,
+                        "progress_identity": batch.identity,
+                    })
+                    _write_json_atomic(process_metadata_path, process_metadata)
+                    if status in {"completed", "failed", "cancelled", "interrupted"}:
+                        process = self._processes.get(run_id)
+                        if process is not None and process.poll() is not None:
+                            self._processes.pop(run_id, None)
+                    return updated
         process = self._processes.get(run_id)
-        if process is not None and process.poll() not in {None, 0}:
-            return self._repository.update(run_id, "failed", progress=100, message=f"Inference runner exited with code {process.returncode}")
+        return_code = process.poll() if process is not None else None
+        if process is not None and return_code is not None:
+            self._processes.pop(run_id, None)
+            if return_code == 0:
+                return self._repository.update(
+                    run_id,
+                    "failed",
+                    progress=100,
+                    message="Inference runner exited cleanly without a completed result",
+                )
+            return self._repository.update(run_id, "failed", progress=100, message=f"Inference runner exited with code {return_code}")
         return run
 
     def cancel(self, run_id: str) -> dict:
@@ -82,6 +139,22 @@ class LocalInferenceExecutor:
                 process.kill()
                 process.wait(timeout=3)
         elif run.get("pid") and _process_exists(run["pid"]):
+            if not run.get("run_directory"):
+                raise ProcessOwnershipError(
+                    f"Refusing to terminate PID {run['pid']}: inference run has no persisted directory"
+                )
+            run_directory = Path(run["run_directory"])
+            try:
+                metadata = json.loads((run_directory / "process.json").read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                metadata = {}
+            verify_persisted_process(
+                pid=run["pid"],
+                command_line=_process_command_line(run["pid"]),
+                token=metadata.get("token"),
+                manifest_path=run_directory / "manifest.json",
+                module_name="yolo_factory.inference.runner",
+            )
             os.kill(run["pid"], signal.SIGTERM)
             deadline = time.monotonic() + 3
             while _process_exists(run["pid"]) and time.monotonic() < deadline:
@@ -105,3 +178,17 @@ def _process_exists(pid: int) -> bool:
     except (OSError, ValueError):
         return False
     return True
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _write_json_atomic(path: Path, payload: dict) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+    temporary.replace(path)

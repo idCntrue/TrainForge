@@ -10,6 +10,7 @@ import { mapInference } from '../../platform/apiPlatformRepository'
 import type { InferenceMode, InferenceRun, ModelArtifact, TaskType } from '../../platform/types'
 import { InferenceResultViewer } from './InferenceResultViewer'
 import { selectInitialInferenceModel, selectModelForTask } from './inferencePresentation'
+import { startAdaptivePolling } from '../../polling'
 
 export default function InferencePage() {
   const [sourceKind, setSourceKind] = useState<'published' | 'candidate' | 'imported'>('published')
@@ -44,20 +45,25 @@ export default function InferencePage() {
   }, [form])
   const loadHistory = () => api.listInferenceRuns().then((items) => setHistory(items.map(mapInference)))
   useEffect(() => { void loadHistory().catch((error) => message.error(error.message)) }, [])
+  const activeRunIds = history
+    .filter((item) => ['queued', 'running'].includes(item.status))
+    .map((item) => item.id)
+    .sort()
+    .join(',')
   useEffect(() => {
-    const active = history.filter((item) => ['queued', 'running'].includes(item.status))
-    if (!active.length) return
-    const timer = window.setInterval(() => {
-      void Promise.all(active.map((item) => api.refreshInferenceRun(item.id)))
-        .then(async (items) => {
-          const mapped = items.map(mapInference)
-          if (run) setRun(mapped.find((item) => item.id === run.id) ?? run)
-          await loadHistory()
-        })
-        .catch((error) => message.error(error instanceof Error ? error.message : '刷新推理进度失败'))
-    }, 1500)
-    return () => window.clearInterval(timer)
-  }, [history, run])
+    const ids = activeRunIds ? activeRunIds.split(',') : []
+    if (!ids.length) return
+    return startAdaptivePolling(async (signal) => {
+      const mapped = (await Promise.all(ids.map((id) => api.refreshInferenceRun(id, signal)))).map(mapInference)
+      const byId = new Map(mapped.map((item) => [item.id, item]))
+      setHistory((current) => current.map((item) => byId.get(item.id) ?? item))
+      setRun((current) => current ? byId.get(current.id) ?? current : undefined)
+    }, {
+      foregroundMs: 1500,
+      backgroundMs: 15000,
+      onError: (error) => message.error(error instanceof Error ? error.message : '刷新推理进度失败'),
+    })
+  }, [activeRunIds])
 
   const execute = async () => {
     try {

@@ -100,6 +100,7 @@ from yolo_factory.models.imported_repository import ImportedModelRepository, Ref
 from yolo_factory.inference.executor import InferenceExecutionError, LocalInferenceExecutor
 from yolo_factory.inference.repository import ActiveInferenceRunDeletion, InferenceRunRepository
 from yolo_factory.common.operation_guard import ActiveHeavyOperationError, HeavyOperationGuard
+from yolo_factory.common.process_identity import ProcessOwnershipError
 from yolo_factory.video.import_service import VIDEO_EXTENSIONS, import_video_collection
 from yolo_factory.frames.extractor import extract_interval_frames
 from yolo_factory.frames.video_append import append_videos_to_batch
@@ -398,7 +399,7 @@ def create_app(
     )
     task_configs = (task_config_dir or default_task_configs).resolve()
     registry = create_registry(root / "registry" / "factory.db")
-    app = FastAPI(title="YOLO Model Factory", version="0.1.1")
+    app = FastAPI(title="YOLO Model Factory", version="0.2.2")
     app.state.storage_root = root
     app.state.registry = registry
     object_storage = LocalObjectStorage(root)
@@ -1163,6 +1164,8 @@ def create_app(
             raise HTTPException(status_code=404, detail="training run not found") from exc
         except InvalidTrainingTransition as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ProcessOwnershipError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.delete("/api/training-runs/{run_id}", status_code=204)
     def delete_training_run(run_id: str, delete_artifacts: bool = False, cascade: bool = False) -> Response:
@@ -1725,6 +1728,8 @@ def create_app(
             return _inference_response(inference_repository.update(run_id, "cancelled", progress=0, message="Cancellation requested"))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="inference run not found") from exc
+        except ProcessOwnershipError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.delete("/api/inference-runs/{run_id}", status_code=204)
     def delete_inference_run(run_id: str, delete_artifacts: bool = False) -> Response:

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from tests.integration.test_model_api import PassingGates, _storage
 from yolo_factory.api.app import create_app
 from yolo_factory.registry.database import create_registry
+from yolo_factory.common.process_identity import ProcessOwnershipError
 
 
 class PassingInference:
@@ -41,6 +42,11 @@ class AsyncInference:
 
     def cancel(self, run_id: str):
         return self.repository.update(run_id, "cancelled", progress=2, message="Cancelled")
+
+
+class RefusingInferenceCancellation(AsyncInference):
+    def cancel(self, run_id: str):
+        raise ProcessOwnershipError(f"Refusing to terminate persisted PID for {run_id}")
 
 
 def _published_model(client: TestClient) -> str:
@@ -130,6 +136,16 @@ def test_async_inference_returns_immediately_and_exposes_refresh_and_cancel(tmp_
     assert started.json()["status"] == "running"
     assert refreshed.json()["status"] == "completed"
     assert cancelled.json()["status"] == "cancelled"
+
+
+def test_cancel_inference_reports_process_identity_conflict(tmp_path: Path) -> None:
+    storage = _storage(tmp_path)
+    executor = RefusingInferenceCancellation(storage)
+    with TestClient(create_app(storage_root=storage, training_engine="simulation", inference_executor=executor)) as client:
+        response = client.post("/api/inference-runs/inference-reused-pid/cancel")
+
+    assert response.status_code == 409
+    assert "Refusing to terminate" in response.json()["detail"]
 
 
 def test_runs_inference_with_unpublished_candidate_model(tmp_path: Path) -> None:

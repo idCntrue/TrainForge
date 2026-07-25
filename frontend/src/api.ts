@@ -301,7 +301,7 @@ export interface TrainingApiClient {
   listTrainingRuns(): Promise<TrainingRunApiResponse[]>
   getTrainingRun(id: string): Promise<TrainingRunApiResponse>
   createTrainingRun(input: CreateTrainingRunApiRequest): Promise<TrainingRunApiResponse>
-  refreshTrainingRun(id: string): Promise<TrainingRunApiResponse>
+  refreshTrainingRun(id: string, signal?: AbortSignal): Promise<TrainingRunApiResponse>
   cancelTrainingRun(id: string): Promise<TrainingRunApiResponse>
   deleteTrainingRun(id: string, deleteArtifacts: boolean, cascade?: boolean): Promise<void>
   retryTrainingRun(id: string, input: { strategy: 'safe'; request_id: string }): Promise<TrainingRunApiResponse>
@@ -510,10 +510,12 @@ export class ApiError extends Error {
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL ?? '/api'
 
-async function getJson<T>(path: string): Promise<T> {
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   let response: Response
   try {
-    response = await fetch(`${API_BASE_URL}${path}`)
+    response = signal
+      ? await fetch(`${API_BASE_URL}${path}`, { signal })
+      : await fetch(`${API_BASE_URL}${path}`)
   } catch {
     throw new Error('API 服务未启动，请运行 scripts/start-ui.ps1')
   }
@@ -532,7 +534,7 @@ async function downloadBlob(path: string): Promise<{ blob: Blob; filename?: stri
   return { blob: await response.blob(), filename }
 }
 
-async function postJson<T>(path: string, body: any): Promise<T> {
+async function postJson<T>(path: string, body: any, signal?: AbortSignal): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
@@ -541,6 +543,7 @@ async function postJson<T>(path: string, body: any): Promise<T> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      ...(signal ? { signal } : {}),
     })
   } catch {
     throw new Error('API 服务未连接')
@@ -678,7 +681,7 @@ export const api = {
     form.append('base_model_file', file)
     return postFormWithProgress<TrainingRunApiResponse>('/training-runs/upload', form, onProgress)
   },
-  refreshTrainingRun: (id: string) => postJson<TrainingRunApiResponse>(`/training-runs/${id}/refresh`, {}),
+  refreshTrainingRun: (id: string, signal?: AbortSignal) => postJson<TrainingRunApiResponse>(`/training-runs/${id}/refresh`, {}, signal),
   cancelTrainingRun: (id: string) => postJson<TrainingRunApiResponse>(`/training-runs/${id}/cancel`, {}),
   retryTrainingRun: (id: string, input: { strategy: 'safe'; request_id: string }) => postJson<TrainingRunApiResponse>(`/training-runs/${id}/retry`, input),
   recoverTrainingEvaluation: (id: string) => postJson<TrainingRunApiResponse>(`/training-runs/${id}/recover-evaluation`, {}),
@@ -693,7 +696,7 @@ export const api = {
   archiveModel: (id: string) => postJson<ModelVersionApiResponse>(`/model-versions/${id}/archive`, {}),
   downloadModelRelease: (id: string) => downloadBlob(`/model-versions/${id}/export`),
   deleteModel: (id: string, deleteArtifacts = false, cascade = false) => deleteResource(`/model-versions/${id}?delete_artifacts=${deleteArtifacts}&cascade=${cascade}`),
-  listInferenceRuns: () => getJson<InferenceRunApiResponse[]>('/inference-runs'),
+  listInferenceRuns: (signal?: AbortSignal) => getJson<InferenceRunApiResponse[]>('/inference-runs', signal),
   getInferenceRun: (id: string) => getJson<InferenceRunApiResponse>(`/inference-runs/${id}`),
   createInferenceRun: (input: CreateInferenceRunApiRequest) => postJson<InferenceRunApiResponse>('/inference-runs', input),
   uploadInferenceRun: (input: Omit<CreateInferenceRunApiRequest, 'sources'>, files: File[], onProgress?: (percent: number) => void) => {
@@ -716,7 +719,7 @@ export const api = {
     return postFormWithProgress<ImportedModelApiResponse>('/imported-models', form, onProgress)
   },
   deleteImportedModel: (id: string, deleteArtifact = true) => deleteResource(`/imported-models/${id}?delete_artifact=${deleteArtifact}`),
-  refreshInferenceRun: (id: string) => postJson<InferenceRunApiResponse>(`/inference-runs/${id}/refresh`, {}),
+  refreshInferenceRun: (id: string, signal?: AbortSignal) => postJson<InferenceRunApiResponse>(`/inference-runs/${id}/refresh`, {}, signal),
   cancelInferenceRun: (id: string) => postJson<InferenceRunApiResponse>(`/inference-runs/${id}/cancel`, {}),
   deleteInferenceRun: (id: string, deleteArtifacts = false) => deleteResource(`/inference-runs/${id}?delete_artifacts=${deleteArtifacts}`),
   syncAnnotationImages: (taskId: string) => postJson<AnnotationSyncApiResponse>('/annotation-images/sync', { task_id: taskId }),

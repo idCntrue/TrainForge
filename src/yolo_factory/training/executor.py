@@ -5,10 +5,16 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
 
-from yolo_factory.common.json_lines import read_json_lines
+from yolo_factory.common.json_lines import read_json_lines, read_json_lines_since
+from yolo_factory.common.process_identity import (
+    ProcessOwnershipError,
+    process_command_line as _process_command_line,
+    verify_persisted_process,
+)
 from yolo_factory.training.manifest import write_manifest
 from yolo_factory.training.models import TrainingRun
 from yolo_factory.training.repository import InvalidTrainingTransition, TrainingRunRepository
@@ -101,8 +107,17 @@ class LocalTrainingExecutor:
                 "OPENBLAS_NUM_THREADS": thread_count,
                 "NUMEXPR_NUM_THREADS": thread_count,
             })
+        process_token = uuid.uuid4().hex
         process = subprocess.Popen(
-            [self._python, "-m", "yolo_factory.training.runner", "--manifest", str(manifest_path)],
+            [
+                self._python,
+                "-m",
+                "yolo_factory.training.runner",
+                "--manifest",
+                str(manifest_path),
+                "--process-token",
+                process_token,
+            ],
             stdout=log_stream,
             stderr=subprocess.STDOUT,
             creationflags=creationflags,
@@ -111,7 +126,16 @@ class LocalTrainingExecutor:
         )
         log_stream.close()
         (run_directory / "process.json").write_text(
-            json.dumps({"pid": process.pid, "python": self._python, "initial_resources": initial_resources}, sort_keys=True),
+            json.dumps(
+                {
+                    "pid": process.pid,
+                    "python": self._python,
+                    "token": process_token,
+                    "manifest_path": str(manifest_path.resolve()),
+                    "initial_resources": initial_resources,
+                },
+                sort_keys=True,
+            ),
             encoding="utf-8",
         )
         self._processes[run_id] = process
@@ -127,9 +151,17 @@ class LocalTrainingExecutor:
     def refresh(self, run_id: str) -> TrainingRun:
         run = self._repository.get_required(run_id)
         if run.run_directory:
-            progress_path = Path(run.run_directory) / "progress.jsonl"
+            run_directory = Path(run.run_directory)
+            progress_path = run_directory / "progress.jsonl"
             if progress_path.exists():
-                for event in read_json_lines(progress_path):
+                process_metadata_path = run_directory / "process.json"
+                process_metadata = _read_json(process_metadata_path)
+                batch = read_json_lines_since(
+                    progress_path,
+                    offset=int(process_metadata.get("progress_offset", 0)),
+                    identity=process_metadata.get("progress_identity"),
+                )
+                for event in batch.events:
                     current = self._repository.get_required(run_id)
                     if current.status in {"completed", "failed", "cancelled", "interrupted"}:
                         break
@@ -169,9 +201,15 @@ class LocalTrainingExecutor:
                             )
                         except InvalidTrainingTransition:
                             continue
+                process_metadata.update({
+                    "progress_offset": batch.offset,
+                    "progress_identity": batch.identity,
+                })
+                _write_json_atomic(process_metadata_path, process_metadata)
         process = self._processes.get(run_id)
         current = self._repository.get_required(run_id)
-        if process is not None and process.poll() not in {None, 0} and current.status not in {"completed", "failed", "cancelled", "interrupted"}:
+        return_code = process.poll() if process is not None else None
+        if process is not None and return_code not in {None, 0} and current.status not in {"completed", "failed", "cancelled", "interrupted"}:
             diagnostic = self._write_failure_diagnostic(
                 current,
                 exit_code=process.returncode,
@@ -182,6 +220,19 @@ class LocalTrainingExecutor:
                 message=diagnostic.summary,
                 exit_code=process.returncode,
             )
+        elif process is not None and return_code == 0 and current.status in _ACTIVE_STATUSES:
+            message = "Training runner exited cleanly without a terminal event"
+            self._write_failure_diagnostic(
+                current,
+                exit_code=0,
+                event={"message": message, "technical_message": message, "phase": current.phase},
+            )
+            current = self._repository.transition(
+                run_id,
+                "failed",
+                message=message,
+                exit_code=0,
+            )
         elif process is None and current.status in _ACTIVE_STATUSES and (
             current.pid is None or not _process_exists(current.pid)
         ):
@@ -190,6 +241,8 @@ class LocalTrainingExecutor:
                 "interrupted",
                 message="Runner process is no longer available",
             )
+        if process is not None and return_code is not None:
+            self._processes.pop(run_id, None)
         return current
 
     def _write_failure_diagnostic(
@@ -266,6 +319,19 @@ class LocalTrainingExecutor:
                 _terminate_process_tree(process.pid, force=True)
                 process.wait(timeout=3)
         elif run.pid is not None and _process_exists(run.pid):
+            if not run.run_directory:
+                raise ProcessOwnershipError(
+                    f"Refusing to terminate PID {run.pid}: training run has no persisted directory"
+                )
+            run_directory = Path(run.run_directory)
+            metadata = _read_json(run_directory / "process.json")
+            verify_persisted_process(
+                pid=run.pid,
+                command_line=_process_command_line(run.pid),
+                token=metadata.get("token"),
+                manifest_path=run_directory / "manifest.json",
+                module_name="yolo_factory.training.runner",
+            )
             _terminate_process_tree(run.pid)
             deadline = time.monotonic() + 3
             while _process_exists(run.pid) and time.monotonic() < deadline:
