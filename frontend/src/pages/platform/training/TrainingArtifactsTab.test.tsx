@@ -1,10 +1,11 @@
 import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { TrainingRunDetailsApiResponse } from '../../../api'
 import { TrainingArtifactsTab } from './TrainingArtifactsTab'
 
 describe('TrainingArtifactsTab', () => {
   it('keeps the complete log artifact without repeating recent log content', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const details: TrainingRunDetailsApiResponse = {
       run_id: 'run-1',
       configuration: {
@@ -27,5 +28,7 @@ describe('TrainingArtifactsTab', () => {
     expect(html).toContain('完整运行日志')
     expect(html).not.toContain('最近 200 行')
     expect(html).not.toContain('Traceback from recent API logs')
+    expect(error.mock.calls.flat().join(' ')).not.toContain('Sum of column `span`')
+    error.mockRestore()
   })
 })
