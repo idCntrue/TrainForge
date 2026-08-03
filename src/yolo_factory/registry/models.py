@@ -268,3 +268,13 @@ class HeavyOperationLeaseRecord(Base):
     acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class DatabaseBackupRecord(Base, TimestampMixin):
+    __tablename__ = "database_backups"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    relative_path: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    integrity_check: Mapped[str] = mapped_column(String(32), nullable=False)

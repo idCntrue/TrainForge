@@ -480,3 +480,12 @@ class SamPreviewRequest(BaseModel):
         if any(len(point) != 2 or any(value < 0 or value > 1 for value in point) for point in points):
             raise ValueError("SAM points must be normalized to [0, 1]")
         return self
+
+
+class DatabaseBackupResponse(BaseModel):
+    id: str
+    relative_path: str
+    size_bytes: int
+    sha256: str
+    integrity_check: str
+    created_at: datetime

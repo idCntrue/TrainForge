@@ -66,12 +66,14 @@ from yolo_factory.api.schemas import (
     AnnotationSyncResponse,
     NativeAnnotationExportRequest,
     SamSuggestionRequest,
+    DatabaseBackupResponse,
 )
 from yolo_factory.config.loader import load_system_config, load_task_config
 from yolo_factory.config.models import TaskConfig
 from yolo_factory.registry.database import create_registry, session_scope
 from yolo_factory.operations.lifecycle import ApplicationLifecycle, PeriodicAction, lifespan_for
 from yolo_factory.operations.health import OperationalHealthCollector
+from yolo_factory.operations.database_backup import DatabaseBackup, DatabaseBackupService
 from yolo_factory.registry.models import AnnotationExport, AnnotationImageRecord, AnnotationShapeRecord, DatasetRelease, InferenceRunRecord, ModelVersionRecord, Task, TrainingRunRecord, VideoCollection, VideoAsset, FrameBatch, FrameAsset
 from yolo_factory.training.executor import ActiveTrainingRunError, LocalTrainingExecutor
 from yolo_factory.training.models import TrainingRun, TrainingRunSpec
@@ -395,6 +397,7 @@ def create_app(
     training_resource_cleanup=cleanup_training_resources,
     imported_model_inspector=inspect_imported_model,
     operational_health_collector: OperationalHealthCollector | None = None,
+    database_backup_service: DatabaseBackupService | None = None,
 ) -> FastAPI:
     root = (storage_root or _default_storage_root()).resolve()
     max_upload_bytes = _upload_byte_limit()
@@ -588,6 +591,15 @@ def create_app(
                 path.unlink()
     heavy_operation_guard = HeavyOperationGuard(registry)
     app.state.heavy_operation_guard = heavy_operation_guard
+    backup_retention = int(os.environ.get("DATABASE_BACKUP_RETENTION", "10"))
+    if not 1 <= backup_retention <= 100:
+        raise ValueError("DATABASE_BACKUP_RETENTION must be between 1 and 100")
+    app.state.database_backup_service = database_backup_service or DatabaseBackupService(
+        registry,
+        root / "registry" / "factory.db",
+        root / "registry" / "backups",
+        retention=backup_retention,
+    )
 
     def active_operational_work() -> dict[str, int | str | None]:
         active_statuses = {"queued", "running", "evaluating", "exporting", "verifying"}
@@ -630,6 +642,35 @@ def create_app(
     @app.get("/api/health/details")
     def detailed_health() -> dict:
         return app.state.operational_health_collector.collect()
+
+    def database_backup_response(backup: DatabaseBackup) -> DatabaseBackupResponse:
+        return DatabaseBackupResponse(
+            id=backup.id,
+            relative_path=backup.path.relative_to(root).as_posix(),
+            size_bytes=backup.size_bytes,
+            sha256=backup.sha256,
+            integrity_check=backup.integrity_check,
+            created_at=backup.created_at,
+        )
+
+    @app.post(
+        "/api/operations/database-backups",
+        response_model=DatabaseBackupResponse,
+        status_code=201,
+    )
+    @heavy_operation("database-backup")
+    def create_database_backup() -> DatabaseBackupResponse:
+        return database_backup_response(app.state.database_backup_service.create())
+
+    @app.get(
+        "/api/operations/database-backups",
+        response_model=list[DatabaseBackupResponse],
+    )
+    def list_database_backups() -> list[DatabaseBackupResponse]:
+        return [
+            database_backup_response(backup)
+            for backup in app.state.database_backup_service.list()
+        ]
 
     @app.post("/api/training-resources/cleanup")
     @heavy_operation("training-resource-cleanup")

@@ -138,6 +138,32 @@ def test_detailed_health_exposes_injected_operational_snapshot(tmp_path: Path) -
     }
 
 
+def test_creates_and_lists_verified_database_backups(tmp_path: Path) -> None:
+    storage = tmp_path / "storage"
+    app = create_app(storage_root=storage, training_engine="simulation")
+
+    with TestClient(app) as client:
+        created = client.post("/api/operations/database-backups")
+        listed = client.get("/api/operations/database-backups")
+
+    assert created.status_code == 201
+    assert created.json()["integrity_check"] == "ok"
+    assert created.json()["relative_path"].startswith("registry/backups/factory.backup-")
+    assert created.json()["relative_path"].endswith(".db")
+    assert listed.status_code == 200
+    assert listed.json() == [created.json()]
+
+
+def test_database_backup_respects_heavy_operation_guard(tmp_path: Path) -> None:
+    app = create_app(storage_root=tmp_path / "storage", training_engine="simulation")
+
+    with TestClient(app) as client, app.state.heavy_operation_guard.acquire("model-gates"):
+        response = client.post("/api/operations/database-backups")
+
+    assert response.status_code == 409
+    assert "model-gates" in response.json()["detail"]
+
+
 def test_lists_tasks_collections_and_releases(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     assert client.get("/api/tasks").json() == [
