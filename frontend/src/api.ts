@@ -393,10 +393,26 @@ export interface InferenceRunApiResponse {
   message: string
   output_directory: string | null
   result_path: string | null
-  result: { items?: Array<{ source: string; detections: InferenceDetectionApiResponse[]; speed?: { inference?: number }; media_path?: string | null }>; media?: string[] } | null
+  result: { items?: Array<{ source: string; detections: InferenceDetectionApiResponse[]; speed?: { inference?: number }; media_path?: string | null; raw_onnx_output?: RawOnnxOutputApiResponse; raw_onnx_output_error?: string }>; media?: string[] } | null
   created_at: string
   updated_at: string
   finished_at: string | null
+}
+
+export interface RawOnnxTensorApiResponse {
+  name: string
+  shape: number[]
+  dtype: string
+  elements: number
+  min: number | null
+  max: number | null
+  preview: Array<number | null>
+}
+
+export interface RawOnnxOutputApiResponse {
+  input: { name: string; shape: number[]; dtype: string }
+  outputs: RawOnnxTensorApiResponse[]
+  preview_limit: number
 }
 
 export interface InferenceDetectionApiResponse {

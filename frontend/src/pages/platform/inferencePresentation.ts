@@ -28,6 +28,13 @@ export function getInferencePreviewKind(
   return mode === 'video' ? 'video' : 'image'
 }
 
+export function canInspectInferenceRawOutput(
+  rawOutput?: { outputs: unknown[]; previewLimit: number },
+  rawOutputError?: string,
+) {
+  return Boolean(rawOutput || rawOutputError)
+}
+
 export function clampInferenceResultIndex(index: number, resultCount: number) {
   if (resultCount <= 0) return 0
   return Math.min(Math.max(index, 0), resultCount - 1)

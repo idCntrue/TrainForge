@@ -5,6 +5,11 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+
+
+ONNX_RAW_PREVIEW_LIMIT = 256
+
 
 def _emit(path: Path, status: str, progress: float, message: str) -> None:
     with path.open("a", encoding="utf-8", newline="\n") as stream:
@@ -33,6 +38,76 @@ def _detections(result) -> list[dict]:
             item["polygon"] = [float(value) for point in masks[index] for value in point]
         detections.append(item)
     return detections
+
+
+def _onnx_tensor_summary(name: str, tensor, *, preview_limit: int = ONNX_RAW_PREVIEW_LIMIT) -> dict:
+    values = np.asarray(tensor)
+    flattened = values.reshape(-1)
+    preview = []
+    for value in flattened[:preview_limit]:
+        number = float(value)
+        preview.append(number if np.isfinite(number) else None)
+    finite_values = flattened[np.isfinite(flattened)]
+    return {
+        "name": name,
+        "shape": list(values.shape),
+        "dtype": str(values.dtype),
+        "elements": int(values.size),
+        "min": float(finite_values.min()) if finite_values.size else None,
+        "max": float(finite_values.max()) if finite_values.size else None,
+        "preview": preview,
+    }
+
+
+def _as_numpy(value) -> np.ndarray:
+    if hasattr(value, "detach"):
+        value = value.detach()
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    if hasattr(value, "numpy"):
+        value = value.numpy()
+    return np.asarray(value)
+
+
+def _predictor_input_tensor(predictor) -> np.ndarray:
+    input_tensor = getattr(predictor, "im", None)
+    if input_tensor is None:
+        batch = getattr(predictor, "batch", None)
+        if not isinstance(batch, tuple) or len(batch) < 2:
+            raise RuntimeError("Ultralytics predictor did not retain an input batch")
+        input_tensor = predictor.preprocess(batch[1])
+    return _as_numpy(input_tensor)
+
+
+def _capture_onnx_output(predictor) -> dict:
+    model = getattr(predictor, "model", None)
+    session = getattr(model, "session", None) or getattr(getattr(model, "backend", None), "session", None)
+    if session is None:
+        raise RuntimeError("ONNX Runtime session is unavailable")
+    input_nodes = session.get_inputs()
+    if not input_nodes:
+        raise RuntimeError("ONNX Runtime session has no input nodes")
+    input_name = input_nodes[0].name
+    input_tensor = _predictor_input_tensor(predictor)
+    output_nodes = session.get_outputs()
+    output_values = session.run(None, {input_name: input_tensor})
+    return {
+        "input": {"name": input_name, "shape": list(input_tensor.shape), "dtype": str(input_tensor.dtype)},
+        "outputs": [
+            _onnx_tensor_summary(node.name, output)
+            for node, output in zip(output_nodes, output_values, strict=True)
+        ],
+        "preview_limit": ONNX_RAW_PREVIEW_LIMIT,
+    }
+
+
+def _raw_onnx_diagnostic(runtime: str, predictor) -> dict:
+    if runtime != "onnx":
+        return {"raw_onnx_output_error": "原始 ONNX 输出仅适用于 ONNX Runtime 推理"}
+    try:
+        return {"raw_onnx_output": _capture_onnx_output(predictor)}
+    except Exception as error:
+        return {"raw_onnx_output_error": str(error)}
 
 
 def prediction_source(manifest: dict):
@@ -91,6 +166,7 @@ def run(manifest_path: Path) -> int:
     normalized = []
     total_sources = len(manifest["sources"])
     for source in prediction_inputs(manifest):
+        source_start = len(normalized)
         results = model.predict(
             source=source,
             conf=manifest["confidence"],
@@ -107,6 +183,9 @@ def run(manifest_path: Path) -> int:
             normalized.append({"index": index, "source": str(result.path), "detections": _detections(result), "speed": result.speed})
             progress = min(95, 10 + (85 * (index + 1) / max(1, total_sources)))
             _emit(progress_path, "running", progress, f"Processed {index + 1} item(s)")
+        diagnostic = _raw_onnx_diagnostic(manifest["runtime"], getattr(model, "predictor", None))
+        for item in normalized[source_start:]:
+            item.update(diagnostic)
     media = sorted(str(path.resolve()) for path in (output_directory / "annotated").rglob("*") if path.is_file())
     if manifest["mode"] == "video":
         media = ensure_browser_compatible_video(media)

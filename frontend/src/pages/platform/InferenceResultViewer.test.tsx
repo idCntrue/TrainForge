@@ -58,6 +58,7 @@ describe('InferenceResultViewer', () => {
     expect(html).toContain('inference-thumbnail-rail')
     expect(html).toContain('aria-current="true"')
     expect(html).toContain('first.jpg')
+    expect(html).toContain('查看原始结构')
     expect(html).toContain('打开当前标注产物')
   })
 

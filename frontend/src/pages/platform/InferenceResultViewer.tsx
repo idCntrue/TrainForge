@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, Empty, Switch, Tooltip } from 'antd'
-import { ChevronLeft, ChevronRight, Download } from 'lucide-react'
+import { Button, Drawer, Empty, Switch, Tabs, Tooltip, Typography } from 'antd'
+import { Braces, ChevronLeft, ChevronRight, Download } from 'lucide-react'
 
 import { api } from '../../api'
 import type { InferenceRun } from '../../platform/types'
 import {
   canNavigateInferenceResults,
+  canInspectInferenceRawOutput,
   clampInferenceResultIndex,
   getInferencePreviewKind,
 } from './inferencePresentation'
@@ -20,12 +21,23 @@ function resultFilename(sourceName: string) {
   return sourceName.split(/[\\/]/).pop() || sourceName
 }
 
+function downloadJson(filename: string, value: unknown) {
+  const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 export function InferenceResultViewer({
   run,
   showStructuredMasks,
   onStructuredMasksChange,
 }: InferenceResultViewerProps) {
   const [activeIndex, setActiveIndex] = useState(0)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
   const touchStartX = useRef<number | null>(null)
   const thumbnailRefs = useRef<Array<HTMLButtonElement | null>>([])
   const resultCount = run.results.length
@@ -52,6 +64,13 @@ export function InferenceResultViewer({
   const sourceUrl = api.getArtifactUrl(activeResult.sourceName)
   const polygons = activeResult.detectionItems.filter((detection) => detection.polygon && detection.polygon.length >= 6)
   const filename = resultFilename(activeResult.sourceName)
+  const rawOutputAvailable = canInspectInferenceRawOutput(activeResult.rawOnnxOutput, activeResult.rawOnnxOutputError)
+  const parsedPayload = {
+    source: activeResult.sourceName,
+    detections: activeResult.detectionItems,
+    inference_ms: activeResult.durationMs,
+    media_path: activeResult.mediaPath ?? null,
+  }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!navigable) return
@@ -130,6 +149,7 @@ export function InferenceResultViewer({
           </Tooltip>
         </div>}
         {mediaUrl && <Button icon={<Download size={15} />} href={mediaUrl} target="_blank">打开当前标注产物</Button>}
+        <Button icon={<Braces size={15} />} onClick={() => setInspectorOpen(true)}>查看原始结构</Button>
       </div>
     </div>
 
@@ -152,5 +172,31 @@ export function InferenceResultViewer({
         </Tooltip>
       })}
     </div>}
+    <Drawer title="推理原始结构" open={inspectorOpen} onClose={() => setInspectorOpen(false)} width={640} destroyOnHidden>
+      <Tabs items={[
+        {
+          key: 'parsed',
+          label: '解析后数据',
+          children: <>
+            <Typography.Paragraph type="secondary">平台用于绘制框、掩膜和统计信息的标准化结果。</Typography.Paragraph>
+            <Button icon={<Download size={15} />} onClick={() => downloadJson(`${filename}.parsed.json`, parsedPayload)}>下载 JSON</Button>
+            <Typography.Paragraph copyable={{ text: JSON.stringify(parsedPayload, null, 2) }}>
+              <pre>{JSON.stringify(parsedPayload, null, 2)}</pre>
+            </Typography.Paragraph>
+          </>,
+        },
+        {
+          key: 'raw-onnx',
+          label: '原始 ONNX 输出',
+          children: rawOutputAvailable && activeResult.rawOnnxOutput ? <>
+            <Typography.Paragraph type="secondary">每个输出节点保留形状、范围和前 {activeResult.rawOnnxOutput.previewLimit} 个原始数值；完整张量不会写入结果文件。</Typography.Paragraph>
+            <Button icon={<Download size={15} />} onClick={() => downloadJson(`${filename}.raw-onnx.json`, activeResult.rawOnnxOutput)}>下载 JSON</Button>
+            <Typography.Paragraph copyable={{ text: JSON.stringify(activeResult.rawOnnxOutput, null, 2) }}>
+              <pre>{JSON.stringify(activeResult.rawOnnxOutput, null, 2)}</pre>
+            </Typography.Paragraph>
+          </> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={activeResult.rawOnnxOutputError ?? '该历史推理记录未保存原始 ONNX 输出。'} />,
+        },
+      ]} />
+    </Drawer>
   </div>
 }

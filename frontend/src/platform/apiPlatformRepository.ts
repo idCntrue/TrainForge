@@ -57,6 +57,12 @@ export function mapInference(run: InferenceRunApiResponse): InferenceRun {
       durationMs: item.speed?.inference ?? 0,
       summary: `${item.detections.length} 个目标`,
       mediaPath: item.media_path ?? media[index],
+      rawOnnxOutput: item.raw_onnx_output && {
+        input: item.raw_onnx_output.input,
+        outputs: item.raw_onnx_output.outputs,
+        previewLimit: item.raw_onnx_output.preview_limit,
+      },
+      rawOnnxOutputError: item.raw_onnx_output_error,
     }))
   return {
     id: run.id, mode: run.mode, task: 'detect', modelId: run.model_version_id ?? run.imported_model_id ?? '', runtime: run.runtime, status: run.status,

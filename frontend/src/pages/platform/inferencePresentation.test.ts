@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   canNavigateInferenceResults,
+  canInspectInferenceRawOutput,
   clampInferenceResultIndex,
   getInferencePreviewKind,
   selectInitialInferenceModel,
@@ -42,6 +43,12 @@ describe('inference model selection', () => {
 })
 
 describe('inference result preview', () => {
+  it('opens the inspector when either raw output or a capture explanation exists', () => {
+    expect(canInspectInferenceRawOutput({ outputs: [], previewLimit: 256 })).toBe(true)
+    expect(canInspectInferenceRawOutput(undefined, 'ONNX Runtime session is unavailable')).toBe(true)
+    expect(canInspectInferenceRawOutput()).toBe(false)
+  })
+
   it('does not render media when the runner returned no artifact', () => {
     expect(getInferencePreviewKind('image', undefined)).toBe('none')
   })

@@ -13,7 +13,7 @@ const model = {
 const inference = {
   id: 'inference-001', model_version_id: 'model-001', imported_model_id: null, mode: 'image', runtime: 'pt', sources: ['D:\\managed\\input.jpg'], confidence: 0.25,
   status: 'completed', progress: 100, message: 'Completed', output_directory: 'outputs', result_path: 'result.json',
-  result: { items: [{ source: 'image0.jpg', detections: [{ class_id: 0, class_name: 'door', confidence: 0.92, box: [10, 20, 30, 40], polygon: [0.1, 0.2, 0.3, 0.2, 0.3, 0.4] }], speed: { inference: 12.5 } }], media: ['annotated.jpg'] },
+  result: { items: [{ source: 'image0.jpg', detections: [{ class_id: 0, class_name: 'door', confidence: 0.92, box: [10, 20, 30, 40], polygon: [0.1, 0.2, 0.3, 0.2, 0.3, 0.4] }], speed: { inference: 12.5 }, raw_onnx_output: { input: { name: 'images', shape: [1, 3, 640, 640], dtype: 'float32' }, outputs: [{ name: 'output0', shape: [1, 300, 38], dtype: 'float32', elements: 11400, min: 0, max: 640, preview: [0.1] }], preview_limit: 256 } }], media: ['annotated.jpg'] },
   created_at: '2026-07-14T00:02:00Z', updated_at: '2026-07-14T00:02:01Z', finished_at: '2026-07-14T00:02:01Z',
 }
 
@@ -58,6 +58,11 @@ describe('API platform repository', () => {
       confidence: 0.92,
       box: [10, 20, 30, 40],
       polygon: [0.1, 0.2, 0.3, 0.2, 0.3, 0.4],
+    })
+    expect(run.results[0].rawOnnxOutput).toMatchObject({
+      input: { name: 'images', shape: [1, 3, 640, 640] },
+      outputs: [{ name: 'output0', elements: 11400, preview: [0.1] }],
+      previewLimit: 256,
     })
   })
 })

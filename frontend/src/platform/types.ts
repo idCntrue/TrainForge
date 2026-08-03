@@ -129,6 +129,24 @@ export interface InferenceResult {
   durationMs: number
   summary: string
   mediaPath?: string
+  rawOnnxOutput?: RawOnnxOutput
+  rawOnnxOutputError?: string
+}
+
+export interface RawOnnxTensor {
+  name: string
+  shape: number[]
+  dtype: string
+  elements: number
+  min: number | null
+  max: number | null
+  preview: Array<number | null>
+}
+
+export interface RawOnnxOutput {
+  input: { name: string; shape: number[]; dtype: string }
+  outputs: RawOnnxTensor[]
+  previewLimit: number
 }
 
 export interface InferenceDetection {
