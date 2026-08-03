@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="AGPL-3.0 License"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.5-2563EB.svg" alt="Version 0.2.5"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.6--rc.1-2563EB.svg" alt="Version 0.2.6-rc.1"></a>
   <a href="https://github.com/idCntrue/TrainForge/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/idCntrue/TrainForge/ci.yml?branch=main&label=CI" alt="CI status"></a>
   <a href="https://github.com/idCntrue/TrainForge/stargazers"><img src="https://img.shields.io/github/stars/idCntrue/TrainForge?style=flat" alt="GitHub stars"></a>
   <img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?logo=python&logoColor=white" alt="Python 3.10">
@@ -224,6 +224,8 @@ cp .env.docker.example .env
 | `GPU_SEGMENT_MAX_BATCH` | `2` | GPU 分割最大 Batch |
 | `YOLO_FACTORY_MAX_UPLOAD_BYTES` | `2147483648` | 单文件上传上限 |
 | `MODEL_GATE_TIMEOUT_SECONDS` | `1200` | 单次模型门禁最大运行秒数；超时后终止其子进程 |
+| `DATABASE_BACKUP_RETENTION` | `10` | 在持久化数据目录内保留的已验证 SQLite 在线备份数量 |
+| `HEALTH_GPU_PROBE_TIMEOUT_SECONDS` | `2` | 详细健康检查等待 `nvidia-smi` 的最大秒数 |
 | `TRAINING_MIN_FREE_DISK_GB` | `8` | 训练前最小空闲 GiB；仍建议保持 10-12 GiB 以上 |
 | `TRAINING_MIN_FREE_DISK_PERCENT` | `10` | 训练前最小空闲百分比 |
 | `TRAINING_MIN_AVAILABLE_COMMIT_GB` | `8` | Windows 启动训练前要求的剩余提交内存；仅在可读取 Windows 指标时生效 |
@@ -255,6 +257,25 @@ docker compose up -d --build
 docker compose ps
 curl http://127.0.0.1:8080/api/health
 ```
+
+运行证据与在线备份：
+
+```bash
+curl http://127.0.0.1:8080/api/health/details
+curl -X POST http://127.0.0.1:8080/api/operations/database-backups
+curl http://127.0.0.1:8080/api/operations/database-backups
+```
+
+备份通过 SQLite 在线备份 API 创建并执行完整性校验，不会替换正在使用的 `factory.db`。文件位于 `${DATA_DIR}/registry/backups`，属于挂载运行数据，不会进入 Git 或部署更新包。系统不提供自动恢复接口；恢复数据库必须先停止 API，并由运维人员在验证副本后显式执行。
+
+发布前可在全新的临时目录执行 60 秒短验收；正式标记版本前执行独立 8 小时浸泡验收：
+
+```powershell
+./scripts/run-stability-acceptance.ps1 -Mode short
+./scripts/run-stability-acceptance.ps1 -Mode soak -Hours 8
+```
+
+验收器拒绝非空目录和已配置的生产存储根，报告保留在 `%TEMP%\trainforge-stability`，不会读取或修改业务数据库、数据集和模型。
 
 GPU 部署：
 

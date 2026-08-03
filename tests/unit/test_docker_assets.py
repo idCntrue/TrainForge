@@ -131,6 +131,8 @@ def test_docker_environment_documents_training_resource_limits() -> None:
         "GPU_ALLOWED_DEVICES=",
         "YOLO_FACTORY_MAX_UPLOAD_BYTES=2147483648",
         "MODEL_GATE_TIMEOUT_SECONDS=1200",
+        "DATABASE_BACKUP_RETENTION=10",
+        "HEALTH_GPU_PROBE_TIMEOUT_SECONDS=2",
         "TRAINING_MIN_FREE_DISK_GB=8",
         "TRAINING_MIN_FREE_DISK_PERCENT=10",
         "CORS_ALLOWED_ORIGINS=",
@@ -138,7 +140,19 @@ def test_docker_environment_documents_training_resource_limits() -> None:
         assert setting in environment
     assert "YOLO_FACTORY_MAX_UPLOAD_BYTES: ${YOLO_FACTORY_MAX_UPLOAD_BYTES:-2147483648}" in _text("compose.yaml")
     assert "MODEL_GATE_TIMEOUT_SECONDS: ${MODEL_GATE_TIMEOUT_SECONDS:-1200}" in _text("compose.yaml")
+    assert "DATABASE_BACKUP_RETENTION: ${DATABASE_BACKUP_RETENTION:-10}" in _text("compose.yaml")
+    assert "HEALTH_GPU_PROBE_TIMEOUT_SECONDS: ${HEALTH_GPU_PROBE_TIMEOUT_SECONDS:-2}" in _text("compose.yaml")
     assert "client_max_body_size 2g;" in _text("docker/nginx.conf")
+
+
+def test_release_candidate_version_metadata_is_consistent() -> None:
+    assert 'version = "0.2.6rc1"' in _text("pyproject.toml")
+    assert '"version": "0.2.6-rc.1"' in _text("frontend/package.json")
+    assert '"version": "0.2.6-rc.1"' in _text("frontend/package-lock.json")
+    assert 'version="0.2.6-rc.1"' in _text("src/yolo_factory/api/app.py")
+    assert "version-0.2.6--rc.1" in _text("README.md")
+    assert "version-0.2.6--rc.1" in _text("README_EN.md")
+    assert "## 0.2.6-rc.1 - 2026-08-03" in _text("CHANGELOG.md")
 
 
 def test_deploy_cleanup_preserves_current_and_rollback_images_without_touching_volumes() -> None:

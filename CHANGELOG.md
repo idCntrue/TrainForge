@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.2.6-rc.1 - 2026-08-03
+
+- Replace deprecated FastAPI startup/shutdown handlers with an application lifespan that owns recovery and bounded periodic cleanup threads.
+- Add bounded detailed operational health evidence for process memory, host memory, storage, GPU, SQLite, and active work while preserving the compact health endpoint.
+- Add guarded SQLite online backups with integrity checks, SHA-256 metadata, managed retention, and no automatic restore behavior.
+- Add isolated short and eight-hour stability acceptance modes covering registry operations, restart recovery, lease reclaim, simulated training and inference, verified backup, and process-memory growth.
+- Cover restart, expired-lease, and backup-write faults without modifying production storage.
+- Remove the responsive Ant Design descriptions warning and split stable frontend vendor groups while keeping route-level lazy loading.
+- Unify backend, frontend, API, deployment examples, and bilingual documentation version metadata at 0.2.6-rc.1.
+- Publish as a release candidate after the complete automated suites, production build, 60-second isolated acceptance, and an operator-ended partial soak of about one hour; this does not claim the full eight-hour stability gate.
+
 ## 0.2.5 - 2026-07-26
 
 - Persist background jobs in SQLite, recover interrupted work after API restarts, and coordinate heavy operations through expiring database leases.

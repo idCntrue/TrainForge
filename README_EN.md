@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="AGPL-3.0 License"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.5-2563EB.svg" alt="Version 0.2.5"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.2.6--rc.1-2563EB.svg" alt="Version 0.2.6-rc.1"></a>
   <a href="https://github.com/idCntrue/TrainForge/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/idCntrue/TrainForge/ci.yml?branch=main&label=CI" alt="CI status"></a>
   <a href="https://github.com/idCntrue/TrainForge/stargazers"><img src="https://img.shields.io/github/stars/idCntrue/TrainForge?style=flat" alt="GitHub stars"></a>
   <img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?logo=python&logoColor=white" alt="Python 3.10">
@@ -222,6 +222,8 @@ cp .env.docker.example .env
 | `GPU_SEGMENT_MAX_BATCH` | `2` | Maximum GPU segmentation batch |
 | `YOLO_FACTORY_MAX_UPLOAD_BYTES` | `2147483648` | Per-file upload limit |
 | `MODEL_GATE_TIMEOUT_SECONDS` | `1200` | Maximum model-gate runtime in seconds before terminating its subprocess |
+| `DATABASE_BACKUP_RETENTION` | `10` | Number of verified online SQLite backups retained in persistent storage |
+| `HEALTH_GPU_PROBE_TIMEOUT_SECONDS` | `2` | Maximum seconds the detailed health probe waits for `nvidia-smi` |
 | `TRAINING_MIN_FREE_DISK_GB` | `8` | Required free GiB before training; 10-12 GiB remains recommended |
 | `TRAINING_MIN_FREE_DISK_PERCENT` | `10` | Required free-disk percentage |
 
@@ -248,6 +250,25 @@ docker compose up -d --build
 docker compose ps
 curl http://127.0.0.1:8080/api/health
 ```
+
+Operational evidence and online backups:
+
+```bash
+curl http://127.0.0.1:8080/api/health/details
+curl -X POST http://127.0.0.1:8080/api/operations/database-backups
+curl http://127.0.0.1:8080/api/operations/database-backups
+```
+
+Backups use SQLite's online backup API and pass an integrity check without replacing the live `factory.db`. Files are stored under `${DATA_DIR}/registry/backups`, remain part of mounted runtime data, and are excluded from Git and deployment archives. There is no automatic restore endpoint. Stop the API and perform an explicit operator-controlled restore only after verifying a copy.
+
+Run the isolated 60-second acceptance before release and the independent eight-hour soak before tagging:
+
+```powershell
+./scripts/run-stability-acceptance.ps1 -Mode short
+./scripts/run-stability-acceptance.ps1 -Mode soak -Hours 8
+```
+
+The runner rejects non-empty directories and the configured production storage root. Reports stay under `%TEMP%\trainforge-stability`; business databases, datasets, and models are not read or modified.
 
 GPU deployment:
 

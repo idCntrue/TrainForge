@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from yolo_factory.operations.health import OperationalHealthCollector
+from yolo_factory.operations.health import OperationalHealthCollector, _gpu_probe
 from yolo_factory.registry.database import create_registry
 
 
@@ -23,3 +23,17 @@ def test_health_snapshot_keeps_partial_evidence_when_gpu_probe_fails(tmp_path) -
     assert snapshot["sqlite"]["quick_check"] == "ok"
     assert snapshot["active_work"]["heavy_operation"] == "model-gates"
     assert snapshot["warnings"] == ["GPU metrics unavailable: nvidia-smi timeout"]
+
+
+def test_gpu_probe_uses_configured_timeout(monkeypatch) -> None:
+    observed = {}
+
+    def run(*args, **kwargs):
+        observed["timeout"] = kwargs["timeout"]
+        return SimpleNamespace(stdout="NVIDIA GeForce RTX 4060, 8192, 1024, 25\n")
+
+    monkeypatch.setenv("HEALTH_GPU_PROBE_TIMEOUT_SECONDS", "3.5")
+    monkeypatch.setattr("yolo_factory.operations.health.subprocess.run", run)
+
+    assert _gpu_probe()["name"] == "NVIDIA GeForce RTX 4060"
+    assert observed["timeout"] == 3.5

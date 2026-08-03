@@ -407,7 +407,7 @@ def create_app(
     task_configs = (task_config_dir or default_task_configs).resolve()
     registry = create_registry(root / "registry" / "factory.db")
     job_tracker = JobTracker(registry)
-    app = FastAPI(title="YOLO Model Factory", version="0.2.5")
+    app = FastAPI(title="YOLO Model Factory", version="0.2.6-rc.1")
     app.state.storage_root = root
     app.state.registry = registry
     app.state.job_tracker = job_tracker

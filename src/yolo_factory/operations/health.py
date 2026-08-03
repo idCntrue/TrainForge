@@ -24,12 +24,15 @@ def _process_memory() -> int | None:
 
 
 def _gpu_probe() -> dict[str, Any]:
+    timeout_seconds = float(os.environ.get("HEALTH_GPU_PROBE_TIMEOUT_SECONDS", "2"))
+    if timeout_seconds <= 0:
+        raise ValueError("HEALTH_GPU_PROBE_TIMEOUT_SECONDS must be positive")
     completed = subprocess.run(
         ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,utilization.gpu", "--format=csv,noheader,nounits"],
         check=True,
         capture_output=True,
         text=True,
-        timeout=2,
+        timeout=timeout_seconds,
     )
     name, total, used, utilization = next(line for line in completed.stdout.splitlines() if line.strip()).split(", ")
     return {
