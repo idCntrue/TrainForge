@@ -118,6 +118,26 @@ def test_testclient_uses_lifespan_without_on_event_handlers(tmp_path: Path) -> N
     assert not app.router.on_shutdown
 
 
+def test_detailed_health_exposes_injected_operational_snapshot(tmp_path: Path) -> None:
+    class Collector:
+        def collect(self):
+            return {"active_work": {"training": 1, "inference": 1, "background_jobs": 0, "heavy_operation": "model-gates"}}
+
+    app = create_app(
+        storage_root=tmp_path / "storage",
+        training_engine="simulation",
+        operational_health_collector=Collector(),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/api/health/details")
+
+    assert response.status_code == 200
+    assert response.json()["active_work"] == {
+        "training": 1, "inference": 1, "background_jobs": 0, "heavy_operation": "model-gates",
+    }
+
+
 def test_lists_tasks_collections_and_releases(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     assert client.get("/api/tasks").json() == [

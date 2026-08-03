@@ -71,6 +71,7 @@ from yolo_factory.config.loader import load_system_config, load_task_config
 from yolo_factory.config.models import TaskConfig
 from yolo_factory.registry.database import create_registry, session_scope
 from yolo_factory.operations.lifecycle import ApplicationLifecycle, PeriodicAction, lifespan_for
+from yolo_factory.operations.health import OperationalHealthCollector
 from yolo_factory.registry.models import AnnotationExport, AnnotationImageRecord, AnnotationShapeRecord, DatasetRelease, InferenceRunRecord, ModelVersionRecord, Task, TrainingRunRecord, VideoCollection, VideoAsset, FrameBatch, FrameAsset
 from yolo_factory.training.executor import ActiveTrainingRunError, LocalTrainingExecutor
 from yolo_factory.training.models import TrainingRun, TrainingRunSpec
@@ -393,6 +394,7 @@ def create_app(
     training_memory_snapshot=read_training_memory_snapshot,
     training_resource_cleanup=cleanup_training_resources,
     imported_model_inspector=inspect_imported_model,
+    operational_health_collector: OperationalHealthCollector | None = None,
 ) -> FastAPI:
     root = (storage_root or _default_storage_root()).resolve()
     max_upload_bytes = _upload_byte_limit()
@@ -587,6 +589,21 @@ def create_app(
     heavy_operation_guard = HeavyOperationGuard(registry)
     app.state.heavy_operation_guard = heavy_operation_guard
 
+    def active_operational_work() -> dict[str, int | str | None]:
+        active_statuses = {"queued", "running", "evaluating", "exporting", "verifying"}
+        return {
+            "training": sum(run.status in active_statuses for run in training_repository.list()),
+            "inference": sum(run["status"] in {"queued", "running"} for run in inference_repository.list()),
+            "background_jobs": sum(job.status in {"pending", "running"} for job in job_tracker.list_jobs()),
+            "heavy_operation": heavy_operation_guard.active_operation,
+        }
+
+    app.state.operational_health_collector = operational_health_collector or OperationalHealthCollector(
+        storage_root=root,
+        registry=registry,
+        active_work=active_operational_work,
+    )
+
     def heavy_operation(name: str):
         def decorate(function):
             @wraps(function)
@@ -609,6 +626,10 @@ def create_app(
     @app.get("/api/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "storage_root": str(root)}
+
+    @app.get("/api/health/details")
+    def detailed_health() -> dict:
+        return app.state.operational_health_collector.collect()
 
     @app.post("/api/training-resources/cleanup")
     @heavy_operation("training-resource-cleanup")
