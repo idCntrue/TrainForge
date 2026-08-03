@@ -35,6 +35,7 @@ dev = [
 
 [project.scripts]
 yolo-factory = "yolo_factory.cli.app:app"
+trainforge-stability = "yolo_factory.operations.acceptance:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
