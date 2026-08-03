@@ -46,6 +46,7 @@ class DatabaseBackupService:
         *,
         retention: int,
         integrity_check: Callable[[Path], str] = _integrity_check,
+        replace_file: Callable[[Path, Path], object] = Path.replace,
     ) -> None:
         if not 1 <= retention <= 100:
             raise ValueError("backup retention must be between 1 and 100")
@@ -58,6 +59,7 @@ class DatabaseBackupService:
             raise ValueError("backup directory must stay below the registry directory") from error
         self._retention = retention
         self._integrity_check = integrity_check
+        self._replace_file = replace_file
 
     def create(self) -> DatabaseBackup:
         self._backup_root.mkdir(parents=True, exist_ok=True)
@@ -76,7 +78,7 @@ class DatabaseBackupService:
             integrity = self._integrity_check(staging)
             if integrity != "ok":
                 raise DatabaseBackupError(f"integrity check failed: {integrity}")
-            staging.replace(destination)
+            self._replace_file(staging, destination)
             digest = sha256_file(destination)
             with session_scope(self._registry) as session:
                 session.add(DatabaseBackupRecord(
