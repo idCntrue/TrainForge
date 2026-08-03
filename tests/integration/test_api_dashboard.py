@@ -106,6 +106,18 @@ def test_cors_uses_configured_origins_without_credentials(
     assert "access-control-allow-origin" not in rejected.headers
 
 
+def test_testclient_uses_lifespan_without_on_event_handlers(tmp_path: Path) -> None:
+    app = create_app(storage_root=tmp_path / "storage", training_engine="simulation")
+
+    with TestClient(app) as client:
+        assert client.get("/api/health").status_code == 200
+        assert app.state.lifecycle.running is True
+
+    assert app.state.lifecycle.running is False
+    assert not app.router.on_startup
+    assert not app.router.on_shutdown
+
+
 def test_lists_tasks_collections_and_releases(tmp_path: Path) -> None:
     client, _ = _client(tmp_path)
     assert client.get("/api/tasks").json() == [

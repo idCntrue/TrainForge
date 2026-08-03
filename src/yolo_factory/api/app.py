@@ -3,7 +3,6 @@ import json
 import shutil
 import uuid
 import hashlib
-import threading
 import yaml
 from dataclasses import asdict
 from functools import wraps
@@ -71,6 +70,7 @@ from yolo_factory.api.schemas import (
 from yolo_factory.config.loader import load_system_config, load_task_config
 from yolo_factory.config.models import TaskConfig
 from yolo_factory.registry.database import create_registry, session_scope
+from yolo_factory.operations.lifecycle import ApplicationLifecycle, PeriodicAction, lifespan_for
 from yolo_factory.registry.models import AnnotationExport, AnnotationImageRecord, AnnotationShapeRecord, DatasetRelease, InferenceRunRecord, ModelVersionRecord, Task, TrainingRunRecord, VideoCollection, VideoAsset, FrameBatch, FrameAsset
 from yolo_factory.training.executor import ActiveTrainingRunError, LocalTrainingExecutor
 from yolo_factory.training.models import TrainingRun, TrainingRunSpec
@@ -402,8 +402,6 @@ def create_app(
     task_configs = (task_config_dir or default_task_configs).resolve()
     registry = create_registry(root / "registry" / "factory.db")
     job_tracker = JobTracker(registry)
-    job_tracker.recover_interrupted()
-    job_tracker.purge_expired()
     app = FastAPI(title="YOLO Model Factory", version="0.2.5")
     app.state.storage_root = root
     app.state.registry = registry
@@ -411,30 +409,6 @@ def create_app(
     object_storage = LocalObjectStorage(root)
     recycle_bin = FrameRecycleBin(registry, object_storage, operations_root=root / "recycle-bin" / "operations")
     app.state.recycle_bin = recycle_bin
-    recycle_stop = threading.Event()
-    recycle_thread: threading.Thread | None = None
-
-    def recycle_cleanup_loop() -> None:
-        while not recycle_stop.is_set():
-            try:
-                recycle_bin.purge_expired(limit=100)
-            except Exception:
-                pass
-            recycle_stop.wait(24 * 60 * 60)
-
-    @app.on_event("startup")
-    def start_recycle_cleanup() -> None:
-        nonlocal recycle_thread
-        if recycle_thread is None or not recycle_thread.is_alive():
-            recycle_stop.clear()
-            recycle_thread = threading.Thread(target=recycle_cleanup_loop, name="frame-recycle-cleanup", daemon=True)
-            recycle_thread.start()
-
-    @app.on_event("shutdown")
-    def stop_recycle_cleanup() -> None:
-        recycle_stop.set()
-        if recycle_thread is not None:
-            recycle_thread.join(timeout=2)
     training_repository = TrainingRunRepository(registry)
     resource_policy = training_resource_policy or TrainingResourcePolicy.from_environment(os.environ)
     training_executor = LocalTrainingExecutor(
@@ -444,7 +418,6 @@ def create_app(
         simulation_step_seconds=training_step_seconds,
         resource_policy=resource_policy,
     )
-    training_executor.recover_stale_runs()
     app.state.training_repository = training_repository
     app.state.training_executor = training_executor
 
@@ -467,8 +440,21 @@ def create_app(
     app.state.model_gate_executor = gate_executor
     inference_repository = InferenceRunRepository(registry)
     local_inference_executor = inference_executor or LocalInferenceExecutor(inference_repository, root)
-    if hasattr(local_inference_executor, "recover_stale_runs"):
-        local_inference_executor.recover_stale_runs()
+    def recover_inference_runs() -> None:
+        if hasattr(local_inference_executor, "recover_stale_runs"):
+            local_inference_executor.recover_stale_runs()
+
+    lifecycle = ApplicationLifecycle(
+        startup_actions=[
+            job_tracker.recover_interrupted,
+            job_tracker.purge_expired,
+            training_executor.recover_stale_runs,
+            recover_inference_runs,
+        ],
+        periodic_actions=[PeriodicAction("frame-recycle-cleanup", 24 * 60 * 60, lambda: recycle_bin.purge_expired(limit=100))],
+    )
+    app.state.lifecycle = lifecycle
+    app.router.lifespan_context = lifespan_for(lifecycle)
     app.state.inference_repository = inference_repository
     app.state.inference_executor = local_inference_executor
     annotation_repository = AnnotationRepository(registry, object_storage)
