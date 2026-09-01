@@ -16,6 +16,7 @@ from PIL import Image, ImageOps
 from sqlalchemy import delete, func, select
 
 from yolo_factory.api.jobs import job_tracker as fallback_job_tracker, JobStatus, JobTracker
+from yolo_factory.api.system_status import system_status
 from yolo_factory.api.task_metadata import decode_task_classes, encode_task_classes
 from yolo_factory.api.queries import (
     dashboard_summary,
@@ -66,6 +67,7 @@ from yolo_factory.api.schemas import (
     AnnotationSyncResponse,
     NativeAnnotationExportRequest,
     SamSuggestionRequest,
+    SystemStatusResponse,
     DatabaseBackupResponse,
 )
 from yolo_factory.config.loader import load_system_config, load_task_config
@@ -405,7 +407,8 @@ def create_app(
         os.environ.get("YOLO_FACTORY_TASK_CONFIG_DIR", project_root / "configs" / "tasks")
     )
     task_configs = (task_config_dir or default_task_configs).resolve()
-    registry = create_registry(root / "registry" / "factory.db")
+    database_path = root / "registry" / "factory.db"
+    registry = create_registry(database_path)
     job_tracker = JobTracker(registry)
     app = FastAPI(title="YOLO Model Factory", version="0.2.6-rc.1")
     app.state.storage_root = root
@@ -635,9 +638,9 @@ def create_app(
         allow_headers=["*"],
     )
 
-    @app.get("/api/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok", "storage_root": str(root)}
+    @app.get("/api/health", response_model=SystemStatusResponse)
+    def health() -> SystemStatusResponse:
+        return SystemStatusResponse(**system_status(registry, root, database_path))
 
     @app.get("/api/health/details")
     def detailed_health() -> dict:

@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Col,
+  Descriptions,
   Divider,
   Drawer,
   Dropdown,
@@ -159,6 +160,18 @@ function App() {
     void load()
   }, [])
 
+  const refreshHealth = useCallback(async () => {
+    try {
+      setHealth(await api.health())
+    } catch {
+      setHealth(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (view === 'system') void refreshHealth()
+  }, [view, refreshHealth])
+
   const commitNavigation = useCallback((nextView: ViewKey, replace = false) => {
     if (viewRef.current === 'review') lastReviewSearch.current = window.location.search
     const path = `${pathForView(nextView)}${nextView === 'review' ? lastReviewSearch.current : ''}`
@@ -296,7 +309,7 @@ function App() {
         />
         <div className="sidebar-status">
           <Activity size={16} />
-          <span>{health?.status === 'ok' ? '服务正常' : '等待连接'}</span>
+          <span style={{ color: health?.status === 'ok' ? undefined : '#e05c52' }}>{health?.status === 'ok' ? '服务正常' : '连接断开'}</span>
         </div>
       </Sider>
       <Layout>
@@ -343,6 +356,7 @@ function App() {
               onNavigationGuardChange={(guard) => { navigationGuard.current = guard }}
               onJobStarted={(jobId) => setActiveJobId(jobId)}
               refreshDashboard={() => void load()}
+              refreshHealth={refreshHealth}
             />
           )}
         </Content>
@@ -363,6 +377,7 @@ function View(props: {
   onNavigationGuardChange: (guard: NavigationGuardRegistration | null) => void
   onJobStarted: (jobId: string) => void
   refreshDashboard: () => void
+  refreshHealth: () => void
 }) {
   if (props.view === 'dashboard') return <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}><PlatformDashboardPage onNavigate={props.onNavigate} /></Suspense>
   if (props.view === 'training') return <Suspense fallback={<Skeleton active paragraph={{ rows: 8 }} />}><TrainingPage /></Suspense>
@@ -395,7 +410,7 @@ function View(props: {
     )
   }
   if (props.view === 'datasets') return <DatasetWorkspace data={props.releases} tasks={props.tasks} refreshDashboard={props.refreshDashboard} />
-  if (props.view === 'system') return <SystemView health={props.health} />
+  if (props.view === 'system') return <SystemView health={props.health} onRefresh={props.refreshHealth} />
   return <Dashboard data={props.summary} releases={props.releases} />
 }
 
@@ -1747,24 +1762,67 @@ function ReleasesTable({ data, compact = false, refreshDashboard, onBrowse }: { 
   return compact ? table : <DataPanel title="数据集版本" subtitle="校验、校验和与 DVC 状态">{table}</DataPanel>
 }
 
-function SystemView({ health }: { health: HealthStatus | null }) {
+function SystemView({ health, onRefresh }: { health: HealthStatus | null; onRefresh: () => void }) {
+  const disk = health?.disk
+  const gpu = health?.gpu
+  const jobs = health?.active_jobs
+  const versions = health?.versions
+  const db = health?.database
+  const totalGiB = disk ? disk.total / 1024 ** 3 : 0
+  const freeGiB = disk ? disk.free / 1024 ** 3 : 0
+  const diskPercent = disk && disk.total > 0 ? Math.round((disk.used / disk.total) * 100) : 0
+  const lowDisk = disk !== undefined && freeGiB < 8
+  const title = (icon: React.ReactNode, label: string) => <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{icon}{label}</span>
+
   return (
-    <div className="panel system-panel">
-      <div className="system-indicator"><Server size={28} /><span /></div>
-      <div>
-        <h2>数据服务</h2>
-        <Tag color={health?.status === 'ok' ? 'green' : 'red'}>{health?.status ?? 'unknown'}</Tag>
-        <dl>
-          <dt>存储根目录</dt>
-          <dd>{health?.storage_root ?? '-'}</dd>
-          <dt>访问模式</dt>
-          <dd>单实例数据管理工作台</dd>
-          <dt>服务 API</dt>
-          <dd>{`${window.location.origin}/api`}</dd>
-          <dt>开源许可</dt>
-          <dd><a href="https://github.com/idCntrue/TrainForge" target="_blank" rel="noreferrer">AGPL-3.0 · 查看对应源码</a></dd>
-        </dl>
+    <div className="platform-stack">
+      <div className="platform-panel-heading">
+        <div><h3>系统状态</h3><p>存储、GPU、运行环境与活跃任务概览</p></div>
+        <Button icon={<RefreshCw size={15} />} onClick={onRefresh}>刷新</Button>
       </div>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12}>
+          <Card size="small" title={title(<HardDrive size={14} />, '存储')}>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="根目录">{health?.storage_root ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="磁盘">
+                <Progress percent={diskPercent} status={lowDisk ? 'exception' : 'normal'} size="small" />
+                <small>{freeGiB.toFixed(1)} GiB 可用 / {totalGiB.toFixed(1)} GiB（已用 {diskPercent}%）</small>
+              </Descriptions.Item>
+              <Descriptions.Item label="数据库">{db ? `${formatBytes(db.size_bytes)} · ${db.path}` : '-'}</Descriptions.Item>
+            </Descriptions>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card size="small" title={title(<Box size={14} />, 'GPU / CUDA')}>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="状态"><Tag color={gpu?.available ? 'green' : 'default'}>{gpu?.available ? '可用' : '不可用'}</Tag></Descriptions.Item>
+              <Descriptions.Item label="设备">{gpu?.device ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="显存">{gpu?.memory_bytes != null ? formatBytes(gpu.memory_bytes) : '-'}</Descriptions.Item>
+              <Descriptions.Item label="CUDA">{gpu?.cuda_version ?? '-'}</Descriptions.Item>
+            </Descriptions>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card size="small" title={title(<Server size={14} />, '运行环境')}>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="Python">{versions?.python ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="PyTorch">{versions?.torch ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="Ultralytics">{versions?.ultralytics ?? '-'}</Descriptions.Item>
+              <Descriptions.Item label="服务 API">{`${window.location.origin}/api`}</Descriptions.Item>
+              <Descriptions.Item label="许可"><a href="https://github.com/idCntrue/TrainForge" target="_blank" rel="noreferrer">AGPL-3.0</a></Descriptions.Item>
+            </Descriptions>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card size="small" title={title(<Activity size={14} />, '活跃任务')}>
+            <Descriptions column={1} size="small">
+              <Descriptions.Item label="训练中">{jobs?.training ?? 0}</Descriptions.Item>
+              <Descriptions.Item label="推理中">{jobs?.inference ?? 0}</Descriptions.Item>
+            </Descriptions>
+          </Card>
+        </Col>
+      </Row>
     </div>
   )
 }

@@ -12,6 +12,46 @@ class DashboardSummary(BaseModel):
     dataset_releases: int
 
 
+class DiskUsage(BaseModel):
+    total: int
+    used: int
+    free: int
+
+
+class GpuInfo(BaseModel):
+    available: bool
+    device: Optional[str] = None
+    memory_bytes: Optional[int] = None
+    cuda_version: Optional[str] = None
+
+
+class VersionInfo(BaseModel):
+    python: str
+    torch: Optional[str] = None
+    ultralytics: Optional[str] = None
+    cuda: Optional[str] = None
+
+
+class ActiveJobs(BaseModel):
+    training: int
+    inference: int
+
+
+class DatabaseInfo(BaseModel):
+    path: str
+    size_bytes: int
+
+
+class SystemStatusResponse(BaseModel):
+    status: str
+    storage_root: str
+    disk: DiskUsage
+    gpu: GpuInfo
+    versions: VersionInfo
+    active_jobs: ActiveJobs
+    database: DatabaseInfo
+
+
 class TaskSummary(BaseModel):
     id: str
     task_type: str

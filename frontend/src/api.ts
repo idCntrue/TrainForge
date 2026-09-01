@@ -64,9 +64,44 @@ export interface DatasetReconciliationFinding {
   allowed_actions: string[]
 }
 
+export interface DiskUsage {
+  total: number
+  used: number
+  free: number
+}
+
+export interface GpuInfo {
+  available: boolean
+  device: string | null
+  memory_bytes: number | null
+  cuda_version: string | null
+}
+
+export interface VersionInfo {
+  python: string
+  torch: string | null
+  ultralytics: string | null
+  cuda: string | null
+}
+
+export interface ActiveJobs {
+  training: number
+  inference: number
+}
+
+export interface DatabaseInfo {
+  path: string
+  size_bytes: number
+}
+
 export interface HealthStatus {
   status: string
   storage_root: string
+  disk: DiskUsage
+  gpu: GpuInfo
+  versions: VersionInfo
+  active_jobs: ActiveJobs
+  database: DatabaseInfo
 }
 
 export interface JobStatus {

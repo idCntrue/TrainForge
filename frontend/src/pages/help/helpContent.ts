@@ -75,8 +75,27 @@ export const helpChapters: HelpChapter[] = [
   ] },
 ]
 
-export function searchHelp(query: string): HelpChapter[] {
+export interface HelpSearchHit {
+  chapter: HelpChapter
+  matchedSections: HelpSection[]
+}
+
+export function searchHelpHits(query: string): HelpSearchHit[] {
   const keyword = query.trim().toLocaleLowerCase()
-  if (!keyword) return helpChapters
-  return helpChapters.filter((chapter) => [chapter.title, chapter.summary, ...chapter.sections.flatMap((section) => [section.title, ...section.content])].join('\n').toLocaleLowerCase().includes(keyword))
+  if (!keyword) return helpChapters.map((chapter) => ({ chapter, matchedSections: chapter.sections }))
+  const hits: HelpSearchHit[] = []
+  for (const chapter of helpChapters) {
+    const matchedSections = chapter.sections.filter((section) =>
+      [section.title, ...section.content].some((text) => text.toLocaleLowerCase().includes(keyword)),
+    )
+    const chapterMatched = [chapter.title, chapter.summary].some((text) => text.toLocaleLowerCase().includes(keyword))
+    if (chapterMatched || matchedSections.length > 0) {
+      hits.push({ chapter, matchedSections })
+    }
+  }
+  return hits
+}
+
+export function searchHelp(query: string): HelpChapter[] {
+  return searchHelpHits(query).map((hit) => hit.chapter)
 }
