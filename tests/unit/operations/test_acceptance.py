@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -49,6 +50,7 @@ def test_short_acceptance_writes_complete_json_and_markdown_reports(tmp_path: Pa
     assert "# TrainForge Stability Acceptance" in result.markdown_path.read_text(encoding="utf-8")
 
 
+@pytest.mark.skipif(shutil.which("powershell") is None, reason="requires Windows PowerShell")
 def test_powershell_wrapper_runs_short_acceptance_in_selected_root(tmp_path: Path) -> None:
     project_root = Path(__file__).resolve().parents[3]
     root = tmp_path / "wrapper-acceptance"
