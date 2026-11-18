@@ -22,15 +22,17 @@ def normalize_test_metrics(result, *, task_type: str, class_names: list[str]) ->
         "precision": _sequence(getattr(metrics, "p", None)),
         "recall": _sequence(getattr(metrics, "r", None)),
         "map50": _sequence(getattr(metrics, "ap50", None)),
-        "map50_95": _sequence(getattr(metrics, "maps", None)),
+        "map50_95": _mean_ap(metrics),
     }
+    positions = _per_class_positions(metrics, len(class_names))
     per_class = []
     for class_id, class_name in enumerate(class_names):
+        position = positions.get(class_id)
         per_class.append({
             "class_id": class_id,
             "class_name": class_name,
             **{
-                name: _number(column[class_id]) if class_id < len(column) else None
+                name: _number(column[position]) if position is not None and position < len(column) else None
                 for name, column in columns.items()
             },
         })
@@ -58,6 +60,35 @@ def _number(value) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _mean_ap(metrics) -> list:
+    """Per-class mAP50-95 in ap_class_index order.
+
+    ``Metric.maps`` is a full ``nc`` array indexed by class id, and classes with no
+    evidence are filled with the global mean. ``Metric.ap`` is aligned with
+    ``ap_class_index`` like p/r/ap50. Preferring ``ap`` keeps every column in one
+    coordinate system; the mean-filled ``maps`` stays as a fallback for fakes that
+    predate it.
+    """
+    values = _sequence(getattr(metrics, "ap", None))
+    if values:
+        return values
+    return _sequence(getattr(metrics, "maps", None))
+
+
+def _per_class_positions(metrics, class_count: int) -> dict[int, int]:
+    """Map class id to its position in the per-class metric arrays.
+
+    Ultralytics only reports classes that appear in the evaluated split, in
+    ``ap_class_index`` order. Indexing those arrays by class id shifts every row
+    after the first missing class (and makes mAP50-95 exceed mAP50), so resolve
+    through ``ap_class_index`` whenever it is present.
+    """
+    class_ids = _sequence(getattr(metrics, "ap_class_index", None))
+    if class_ids:
+        return {int(class_id): position for position, class_id in enumerate(class_ids)}
+    return {class_id: class_id for class_id in range(class_count)}
 
 
 def _sequence(value) -> list:
