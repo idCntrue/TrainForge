@@ -4,7 +4,7 @@ import type { AnnotationShapeApiResponse } from '../../api'
 import { annotationModeLabel, buildObjectPresentation, classColor, findCreatedShapeId, shapeVisualStyle } from './annotationPresentation'
 
 const shape = (id: string, classId: number, className: string): AnnotationShapeApiResponse => ({
-  id, class_id: classId, class_name: className, shape_type: 'polygon', coordinates: [0, 0, 1, 0, 1, 1], source: 'manual', created_at: '', updated_at: '',
+  id, class_id: classId, class_name: className, shape_type: 'polygon', coordinates: [0, 0, 1, 0, 1, 1], source: 'manual', status: 'confirmed', created_at: '', updated_at: '',
 })
 
 describe('annotation presentation', () => {

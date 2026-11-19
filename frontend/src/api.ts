@@ -489,7 +489,10 @@ export interface AnnotationShapeApiResponse {
   class_name: string
   shape_type: 'box' | 'polygon'
   coordinates: number[]
-  source: 'manual' | 'sam2'
+  source: 'manual' | 'sam2' | 'model'
+  status: 'draft' | 'confirmed'
+  confidence?: number | null
+  model_source?: string | null
   created_at: string
   updated_at: string
 }
@@ -507,6 +510,50 @@ export interface AnnotationImageApiResponse {
   shapes: AnnotationShapeApiResponse[]
   created_at: string
   updated_at: string
+}
+
+export interface LabelModelApiResponse {
+  model_source: string
+  name: string
+  task_type: 'detect' | 'segment'
+  published_at?: string | null
+  mapped_classes: number
+  unmapped_classes: string[]
+  classes: string[]
+}
+
+export interface AnnotationDetectApiResponse {
+  image: AnnotationImageApiResponse
+  created: number
+  unmapped_classes: string[]
+  model_was_loaded: boolean
+}
+
+export interface PrelabelRunApiResponse {
+  id: string
+  job_id?: string | null
+  batch_id?: string | null
+  task_id: string
+  model_source: string
+  model_name: string
+  confidence: number
+  iou: number
+  status: string
+  frames_total: number
+  frames_processed: number
+  frames_skipped: number
+  shapes_created: number
+  unmapped_classes: string[]
+  error?: string | null
+  started_at: string
+  finished_at?: string | null
+}
+
+export interface PrelabelStatsApiResponse {
+  model_source: string | null
+  totals: { created: number; draft: number; confirmed: number; rejected: number }
+  adoption_rate: number | null
+  by_class: Array<{ class_name: string; status: string; count: number }>
 }
 
 export interface AnnotationImageSummaryApiResponse {
@@ -539,7 +586,7 @@ export interface AnnotationShapeMutation {
   class_name: string
   shape_type: 'box' | 'polygon'
   coordinates: number[]
-  source?: 'manual' | 'sam2'
+  source?: 'manual' | 'sam2' | 'model'
 }
 
 export interface TrainingStorageErrorDetail {
@@ -798,6 +845,23 @@ export const api = {
     postJson<AnnotationImageApiResponse>(`/annotation-images/${frameId}/sam`, input),
   previewAnnotationWithSam: (frameId: string, input: { model: 'sam2_t.pt' | 'sam2_s.pt'; positive_points: [number, number][]; negative_points: [number, number][]; simplify: number }) =>
     postJson<{ polygon: number[]; model: string; model_was_loaded: boolean }>(`/annotation-images/${frameId}/sam/preview`, input),
+  detectAnnotationObjects: (frameId: string, input: { revision: number; model_source: string; confidence?: number; iou?: number }) =>
+    postJson<AnnotationDetectApiResponse>(`/annotation-images/${frameId}/detect`, input),
+  setAnnotationShapeStatus: (frameId: string, shapeId: string, revision: number, status: 'confirmed' | 'rejected') =>
+    postJson<AnnotationImageApiResponse>(`/annotation-images/${frameId}/shapes/${shapeId}/status`, { revision, status }),
+  confirmAllAnnotationDrafts: (frameId: string, revision: number) =>
+    postJson<AnnotationImageApiResponse>(`/annotation-images/${frameId}/drafts/confirm`, { revision }),
+  listLabelModels: (taskId: string) => getJson<LabelModelApiResponse[]>(`/label-models?task_id=${encodeURIComponent(taskId)}`),
+  startBatchPrelabel: (batchId: string, input: { model_source: string; confidence?: number; iou?: number; overwrite?: boolean }) =>
+    postJson<{ run_id: string; job_id: string; frames_total: number; frames_skipped: number }>(`/frame-batches/${encodeURIComponent(batchId)}/prelabel`, input),
+  listPrelabelRuns: (taskId?: string) => getJson<PrelabelRunApiResponse[]>(`/prelabel-runs${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ''}`),
+  getPrelabelStats: (modelSource?: string, taskId?: string) => {
+    const params = new URLSearchParams()
+    if (modelSource) params.set('model_source', modelSource)
+    if (taskId) params.set('task_id', taskId)
+    const query = params.toString()
+    return getJson<PrelabelStatsApiResponse>(`/prelabel-stats${query ? `?${query}` : ''}`)
+  },
   exportNativeAnnotations: (taskId: string, exportName: string) =>
     postJson<{ export_id: string; extracted_root: string; sample_count: number }>('/annotation-exports/native', { task_id: taskId, export_name: exportName }),
   getArtifactUrl: (path: string) => `${API_BASE_URL}/artifacts?path=${encodeURIComponent(path)}`,

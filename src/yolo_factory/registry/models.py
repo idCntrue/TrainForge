@@ -115,6 +115,34 @@ class AnnotationShapeRecord(Base, TimestampMixin):
     shape_type: Mapped[str] = mapped_column(String(16), nullable=False)
     coordinates_json: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="confirmed", index=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    model_source: Mapped[str | None] = mapped_column(String(200), nullable=True, index=True)
+    prelabel_job_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now, nullable=False)
+
+
+class PrelabelRunRecord(Base):
+    __tablename__ = "prelabel_runs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    batch_id: Mapped[str | None] = mapped_column(String(160), nullable=True, index=True)
+    task_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    model_source: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    model_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    iou: Mapped[float] = mapped_column(Float, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    frames_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    frames_processed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    frames_skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    shapes_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    unmapped_classes_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utc_now, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=utc_now, onupdate=utc_now, nullable=False)
 
 

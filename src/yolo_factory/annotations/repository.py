@@ -5,10 +5,10 @@ import uuid
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from yolo_factory.annotations.domain import AnnotationImage, AnnotationShape
-from yolo_factory.annotations.geometry import validate_geometry
+from yolo_factory.annotations.geometry import GeometryError, validate_geometry
 from yolo_factory.common.task_metadata import decode_task_classes
 from yolo_factory.registry.database import Registry, session_scope
 from yolo_factory.registry.models import AnnotationImageRecord, AnnotationShapeRecord, FrameAsset, FrameBatch, Task, VideoCollection
@@ -117,7 +117,11 @@ class AnnotationRepository:
             )
             .join(Task, Task.id == AnnotationImageRecord.task_id)
             .join(FrameAsset, FrameAsset.id == AnnotationImageRecord.frame_id)
-            .outerjoin(AnnotationShapeRecord, AnnotationShapeRecord.frame_id == AnnotationImageRecord.frame_id)
+            .outerjoin(
+                AnnotationShapeRecord,
+                (AnnotationShapeRecord.frame_id == AnnotationImageRecord.frame_id)
+                & (AnnotationShapeRecord.status != "rejected"),
+            )
             .where(*filters)
             .group_by(
                 AnnotationImageRecord.frame_id,
@@ -152,7 +156,7 @@ class AnnotationRepository:
                 raise KeyError(frame_id)
             return self._to_domain(session, record)
 
-    def create_shape(self, frame_id: str, *, revision: int, class_id: int, class_name: str, shape_type: str, coordinates: list[float], source: str) -> tuple[AnnotationShape, AnnotationImage]:
+    def create_shape(self, frame_id: str, *, revision: int, class_id: int, class_name: str, shape_type: str, coordinates: list[float], source: str, status: str = "confirmed", confidence: float | None = None, model_source: str | None = None, prelabel_job_id: str | None = None) -> tuple[AnnotationShape, AnnotationImage]:
         with session_scope(self._registry) as session:
             image = self._mutable_image(session, frame_id, revision)
             task = session.get(Task, image.task_id)
@@ -161,14 +165,101 @@ class AnnotationRepository:
                 raise ValueError("shape class does not match task contract")
             if (task.task_type == "detect" and shape_type != "box") or (task.task_type == "segment" and shape_type != "polygon"):
                 raise ValueError("shape type does not match task type")
-            shape = AnnotationShapeRecord(id=f"shape-{uuid.uuid4().hex}", frame_id=frame_id, class_id=class_id, class_name=class_name, shape_type=shape_type, coordinates_json=json.dumps(validate_geometry(shape_type, coordinates)), source=source)
+            if status not in {"draft", "confirmed"}:
+                raise ValueError("unsupported shape status")
+            shape = AnnotationShapeRecord(id=f"shape-{uuid.uuid4().hex}", frame_id=frame_id, class_id=class_id, class_name=class_name, shape_type=shape_type, coordinates_json=json.dumps(validate_geometry(shape_type, coordinates)), source=source, status=status, confidence=confidence, model_source=model_source, prelabel_job_id=prelabel_job_id)
             session.add(shape)
             image.revision += 1
-            image.status = "annotated"
+            self._sync_image_status(session, image, frame_id)
             session.flush()
             shape_id = shape.id
         current = self.get_required(frame_id)
         return next(shape for shape in current.shapes if shape.id == shape_id), current
+
+    def create_draft_shapes(self, frame_id: str, shapes: list[dict], *, model_source: str, prelabel_job_id: str | None = None, revision: int | None = None, skip_if_confirmed: bool = True) -> int:
+        """Insert model-proposed shapes as drafts without clobbering human work."""
+        with session_scope(self._registry) as session:
+            image = session.get(AnnotationImageRecord, frame_id)
+            if image is None or image.status == "reviewed":
+                return 0
+            if revision is not None and image.revision != revision:
+                raise AnnotationConflict(f"stale annotation revision: expected {image.revision}, got {revision}")
+            if skip_if_confirmed:
+                confirmed = session.scalar(
+                    select(AnnotationShapeRecord.id).where(
+                        AnnotationShapeRecord.frame_id == frame_id,
+                        AnnotationShapeRecord.status == "confirmed",
+                    ).limit(1)
+                )
+                if confirmed is not None:
+                    return 0
+            task = session.get(Task, image.task_id)
+            classes, _ = decode_task_classes(task.classes_json)
+            added = 0
+            for item in shapes:
+                class_id = int(item["class_id"])
+                class_name = str(item["class_name"])
+                shape_type = str(item["shape_type"])
+                if class_id < 0 or class_id >= len(classes) or classes[class_id] != class_name:
+                    continue
+                if (task.task_type == "detect" and shape_type != "box") or (task.task_type == "segment" and shape_type != "polygon"):
+                    continue
+                try:
+                    coordinates = validate_geometry(shape_type, [float(value) for value in item["coordinates"]])
+                except (GeometryError, TypeError, ValueError):
+                    continue
+                session.add(AnnotationShapeRecord(
+                    id=f"shape-{uuid.uuid4().hex}", frame_id=frame_id, class_id=class_id,
+                    class_name=class_name, shape_type=shape_type,
+                    coordinates_json=json.dumps(coordinates), source="model", status="draft",
+                    confidence=float(item["confidence"]) if item.get("confidence") is not None else None,
+                    model_source=model_source, prelabel_job_id=prelabel_job_id,
+                ))
+                added += 1
+            if added:
+                image.revision += 1
+            session.flush()
+        return added
+
+    def set_shape_status(self, frame_id: str, shape_id: str, *, revision: int, status: str) -> AnnotationImage:
+        if status not in {"confirmed", "rejected"}:
+            raise ValueError("shape status must be confirmed or rejected")
+        with session_scope(self._registry) as session:
+            image = self._mutable_image(session, frame_id, revision)
+            shape = session.get(AnnotationShapeRecord, shape_id)
+            if shape is None or shape.frame_id != frame_id or shape.status == "rejected":
+                raise KeyError(shape_id)
+            shape.status = status
+            image.revision += 1
+            self._sync_image_status(session, image, frame_id)
+        return self.get_required(frame_id)
+
+    def confirm_all_drafts(self, frame_id: str, *, revision: int) -> AnnotationImage:
+        with session_scope(self._registry) as session:
+            image = self._mutable_image(session, frame_id, revision)
+            session.execute(
+                update(AnnotationShapeRecord)
+                .where(
+                    AnnotationShapeRecord.frame_id == frame_id,
+                    AnnotationShapeRecord.status == "draft",
+                )
+                .values(status="confirmed")
+            )
+            image.revision += 1
+            self._sync_image_status(session, image, frame_id)
+        return self.get_required(frame_id)
+
+    @staticmethod
+    def _sync_image_status(session, image: AnnotationImageRecord, frame_id: str) -> None:
+        if image.status == "reviewed":
+            return
+        has_confirmed = session.scalar(
+            select(AnnotationShapeRecord.id).where(
+                AnnotationShapeRecord.frame_id == frame_id,
+                AnnotationShapeRecord.status == "confirmed",
+            ).limit(1)
+        ) is not None
+        image.status = "annotated" if has_confirmed else "pending"
 
     def update_shape(self, frame_id: str, shape_id: str, *, revision: int, class_id: int, class_name: str, coordinates: list[float]) -> AnnotationImage:
         with session_scope(self._registry) as session:
@@ -183,20 +274,28 @@ class AnnotationRepository:
             shape.class_id = class_id
             shape.class_name = class_name
             shape.coordinates_json = json.dumps(validate_geometry(shape.shape_type, coordinates))
+            # A human editing a model draft is the signal that the proposal was
+            # usable: it counts as adopted in the pre-label statistics.
+            if shape.status == "draft":
+                shape.status = "confirmed"
             image.revision += 1
+            self._sync_image_status(session, image, frame_id)
         return self.get_required(frame_id)
 
     def delete_shape(self, frame_id: str, shape_id: str, *, revision: int) -> AnnotationImage:
         with session_scope(self._registry) as session:
             image = self._mutable_image(session, frame_id, revision)
             shape = session.get(AnnotationShapeRecord, shape_id)
-            if shape is None or shape.frame_id != frame_id:
+            if shape is None or shape.frame_id != frame_id or shape.status == "rejected":
                 raise KeyError(shape_id)
-            session.delete(shape)
+            if shape.status == "draft":
+                # Keep a tombstone so the model's rejected proposals stay countable.
+                shape.status = "rejected"
+            else:
+                session.delete(shape)
             session.flush()
-            remaining = session.scalar(select(AnnotationShapeRecord.id).where(AnnotationShapeRecord.frame_id == frame_id).limit(1))
             image.revision += 1
-            image.status = "annotated" if remaining else "pending"
+            self._sync_image_status(session, image, frame_id)
         return self.get_required(frame_id)
 
     def set_status(self, frame_id: str, *, revision: int, status: str) -> AnnotationImage:
@@ -207,11 +306,26 @@ class AnnotationRepository:
             self._check_revision(image, revision)
             if status not in {"pending", "annotated", "reviewed"}:
                 raise InvalidAnnotationTransition("unknown annotation status")
-            shape_exists = session.scalar(select(AnnotationShapeRecord.id).where(AnnotationShapeRecord.frame_id == frame_id).limit(1)) is not None
+            shape_exists = session.scalar(
+                select(AnnotationShapeRecord.id).where(
+                    AnnotationShapeRecord.frame_id == frame_id,
+                    AnnotationShapeRecord.status != "rejected",
+                ).limit(1)
+            ) is not None
             if status == "annotated" and not shape_exists:
                 raise InvalidAnnotationTransition("annotated images require shapes")
             if image.status == "reviewed" and status != "annotated":
                 raise InvalidAnnotationTransition("reviewed image can only return to annotated")
+            if status == "reviewed":
+                # Reviewing is an explicit acceptance of whatever drafts remain.
+                session.execute(
+                    update(AnnotationShapeRecord)
+                    .where(
+                        AnnotationShapeRecord.frame_id == frame_id,
+                        AnnotationShapeRecord.status == "draft",
+                    )
+                    .values(status="confirmed")
+                )
             image.status = status
             image.revision += 1
         return self.get_required(frame_id)
@@ -233,6 +347,9 @@ class AnnotationRepository:
     @staticmethod
     def _to_domain(session, record: AnnotationImageRecord) -> AnnotationImage:
         task = session.get(Task, record.task_id)
-        shapes = list(session.scalars(select(AnnotationShapeRecord).where(AnnotationShapeRecord.frame_id == record.frame_id).order_by(AnnotationShapeRecord.created_at, AnnotationShapeRecord.id)))
+        shapes = list(session.scalars(select(AnnotationShapeRecord).where(
+            AnnotationShapeRecord.frame_id == record.frame_id,
+            AnnotationShapeRecord.status != "rejected",
+        ).order_by(AnnotationShapeRecord.created_at, AnnotationShapeRecord.id)))
         classes, _ = decode_task_classes(task.classes_json)
-        return AnnotationImage(frame_id=record.frame_id, task_id=record.task_id, task_type=task.task_type, image_path=record.image_path, width=record.width, height=record.height, status=record.status, revision=record.revision, classes=tuple(classes), shapes=tuple(AnnotationShape(id=shape.id, class_id=shape.class_id, class_name=shape.class_name, shape_type=shape.shape_type, coordinates=tuple(json.loads(shape.coordinates_json)), source=shape.source, created_at=shape.created_at, updated_at=shape.updated_at) for shape in shapes), created_at=record.created_at, updated_at=record.updated_at)
+        return AnnotationImage(frame_id=record.frame_id, task_id=record.task_id, task_type=task.task_type, image_path=record.image_path, width=record.width, height=record.height, status=record.status, revision=record.revision, classes=tuple(classes), shapes=tuple(AnnotationShape(id=shape.id, class_id=shape.class_id, class_name=shape.class_name, shape_type=shape.shape_type, coordinates=tuple(json.loads(shape.coordinates_json)), source=shape.source, created_at=shape.created_at, updated_at=shape.updated_at, status=shape.status, confidence=shape.confidence, model_source=shape.model_source) for shape in shapes), created_at=record.created_at, updated_at=record.updated_at)

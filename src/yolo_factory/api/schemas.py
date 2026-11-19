@@ -452,6 +452,9 @@ class AnnotationShapeResponse(BaseModel):
     shape_type: str
     coordinates: list[float]
     source: str
+    status: str = "confirmed"
+    confidence: float | None = None
+    model_source: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -498,6 +501,66 @@ class AnnotationSyncResponse(BaseModel):
 class NativeAnnotationExportRequest(BaseModel):
     task_id: str
     export_name: str = Field(min_length=1, max_length=64)
+
+
+class AnnotationDetectRequest(BaseModel):
+    revision: int = Field(ge=0)
+    model_source: str
+    confidence: float = Field(0.25, ge=0.01, le=1)
+    iou: float = Field(0.7, ge=0.05, le=1)
+
+
+class AnnotationDetectResponse(BaseModel):
+    image: "AnnotationImageResponse"
+    created: int
+    unmapped_classes: list[str] = Field(default_factory=list)
+    model_was_loaded: bool = False
+
+
+class AnnotationShapeStatusRequest(BaseModel):
+    revision: int = Field(ge=0)
+    status: str
+
+
+class AnnotationConfirmAllRequest(BaseModel):
+    revision: int = Field(ge=0)
+
+
+class PrelabelStartRequest(BaseModel):
+    model_source: str
+    confidence: float = Field(0.25, ge=0.01, le=1)
+    iou: float = Field(0.7, ge=0.05, le=1)
+    overwrite: bool = False
+
+
+class PrelabelRunResponse(BaseModel):
+    id: str
+    job_id: str | None = None
+    batch_id: str | None = None
+    task_id: str
+    model_source: str
+    model_name: str
+    confidence: float
+    iou: float
+    status: str
+    frames_total: int
+    frames_processed: int
+    frames_skipped: int
+    shapes_created: int
+    unmapped_classes: list[str] = Field(default_factory=list)
+    error: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+
+
+class LabelModelResponse(BaseModel):
+    model_source: str
+    name: str
+    task_type: str
+    published_at: str | None = None
+    mapped_classes: int
+    unmapped_classes: list[str] = Field(default_factory=list)
+    classes: list[str] = Field(default_factory=list)
 
 
 class SamSuggestionRequest(BaseModel):

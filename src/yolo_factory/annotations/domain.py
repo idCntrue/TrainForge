@@ -12,6 +12,9 @@ class AnnotationShape:
     source: str
     created_at: datetime
     updated_at: datetime
+    status: str = "confirmed"
+    confidence: float | None = None
+    model_source: str | None = None
 
 
 @dataclass(frozen=True)

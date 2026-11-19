@@ -3,7 +3,7 @@ import { Circle, Image as KonvaImage, Layer, Line, Rect, Stage, Text } from 'rea
 
 import type { AnnotationImageApiResponse, AnnotationShapeApiResponse, AnnotationTool } from '../../api'
 import { boxFromDrag, denormalizePoints, isPolygonClosingPoint, isShapeEditable, normalizeCanvasPoint, normalizePoints, updatePolygonVertex, type Point } from './annotationGeometry'
-import { shapeVisualStyle, type AnnotationObjectPresentation } from './annotationPresentation'
+import { shapeLabelText, shapeVisualStyle, type AnnotationObjectPresentation } from './annotationPresentation'
 
 interface Props {
   image: AnnotationImageApiResponse
@@ -131,7 +131,9 @@ export default function AnnotationCanvas(props: Props) {
 
 function PersistedShape({ object, viewport, selected, editable, listening, onSelect, onUpdate }: { object: AnnotationObjectPresentation; viewport: { x: number; y: number; width: number; height: number }; selected: boolean; editable: boolean; listening: boolean; onSelect: (id?: string) => void; onUpdate: (shape: AnnotationShapeApiResponse, coordinates: number[]) => void }) {
   const { shape } = object
-  const visual = shapeVisualStyle(object.color, selected)
+  const draft = shape.status === 'draft'
+  const visual = shapeVisualStyle(object.color, selected, draft)
+  const label = shapeLabelText(object)
   const selectShape = (event: any) => { event.cancelBubble = true; onSelect(shape.id) }
   if (shape.shape_type === 'box') {
     const [cx, cy, width, height] = shape.coordinates
@@ -144,6 +146,7 @@ function PersistedShape({ object, viewport, selected, editable, listening, onSel
         stroke={visual.classStroke}
         fill={visual.fill}
         strokeWidth={visual.strokeWidth}
+        dash={visual.dash}
         listening={listening}
         draggable={editable}
         onMouseDown={selectShape}
@@ -165,16 +168,16 @@ function PersistedShape({ object, viewport, selected, editable, listening, onSel
         dash={[7, 4]}
         listening={false}
       />}
-      <ShapeLabel x={viewport.x + (cx - width / 2) * viewport.width} y={viewport.y + (cy - height / 2) * viewport.height} text={`#${object.number} ${object.label}`} color={object.color} />
+      <ShapeLabel x={viewport.x + (cx - width / 2) * viewport.width} y={viewport.y + (cy - height / 2) * viewport.height} text={label} color={object.color} dashed={draft} />
     </>
   }
 
   const points = denormalizePoints(shape.coordinates, viewport.width, viewport.height)
   const stagePoints = points.map((value, index) => value + (index % 2 === 0 ? viewport.x : viewport.y))
   return <>
-    <Line points={stagePoints} closed fill={visual.fill} stroke={visual.classStroke} strokeWidth={visual.strokeWidth} listening={listening} onMouseDown={selectShape} onClick={selectShape} />
+    <Line points={stagePoints} closed fill={visual.fill} stroke={visual.classStroke} strokeWidth={visual.strokeWidth} dash={visual.dash} listening={listening} onMouseDown={selectShape} onClick={selectShape} />
     {selected && <Line points={stagePoints} closed stroke={visual.selectionStroke} strokeWidth={2} dash={[7, 4]} listening={false} />}
-    <ShapeLabel x={Math.min(...stagePoints.filter((_, index) => index % 2 === 0))} y={Math.min(...stagePoints.filter((_, index) => index % 2 === 1))} text={`#${object.number} ${object.label}`} color={object.color} />
+    <ShapeLabel x={Math.min(...stagePoints.filter((_, index) => index % 2 === 0))} y={Math.min(...stagePoints.filter((_, index) => index % 2 === 1))} text={label} color={object.color} dashed={draft} />
     {selected && editable && Array.from({ length: points.length / 2 }, (_, index) => (
       <Circle key={index} x={viewport.x + points[index * 2]} y={viewport.y + points[index * 2 + 1]} radius={6} fill="#fff" stroke={visual.selectionStroke} strokeWidth={2} draggable onMouseDown={selectShape} onDragStart={selectShape} onDragEnd={(event) => {
         event.cancelBubble = true
@@ -185,10 +188,10 @@ function PersistedShape({ object, viewport, selected, editable, listening, onSel
   </>
 }
 
-function ShapeLabel({ x, y, text, color }: { x: number; y: number; text: string; color: string }) {
-  const width = Math.max(58, Math.min(220, text.length * 7 + 12))
+function ShapeLabel({ x, y, text, color, dashed = false }: { x: number; y: number; text: string; color: string; dashed?: boolean }) {
+  const width = Math.max(58, Math.min(260, text.length * 7 + 12))
   return <>
-    <Rect x={x} y={Math.max(2, y - 22)} width={width} height={20} fill={color} cornerRadius={2} listening={false} />
+    <Rect x={x} y={Math.max(2, y - 22)} width={width} height={20} fill={color} opacity={dashed ? 0.72 : 1} cornerRadius={2} listening={false} />
     <Text x={x + 6} y={Math.max(5, y - 19)} width={width - 12} height={14} text={text} fill="#fff" fontSize={12} wrap="none" ellipsis listening={false} />
   </>
 }
