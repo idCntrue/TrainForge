@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { Alert, Button, Empty, Input, InputNumber, List, Modal, Pagination, Segmented, Select, Slider, Space, Tag, Tooltip, message } from 'antd'
-import { ArrowLeft, Box, MousePointer2, Pentagon, Redo2, RotateCcw, Sparkles, Undo2, Upload } from 'lucide-react'
+import { ArrowLeft, Box, MousePointer2, Pentagon, Redo2, RotateCcw, ScanSearch, Sparkles, Undo2, Upload } from 'lucide-react'
 
-import { api, type AnnotationImageApiResponse, type AnnotationImageSummaryApiResponse, type AnnotationShapeApiResponse, type AnnotationStatus, type AnnotationTool, type TaskSummary } from '../../api'
+import { api, type AnnotationImageApiResponse, type AnnotationImageSummaryApiResponse, type AnnotationShapeApiResponse, type AnnotationStatus, type AnnotationTool, type LabelModelApiResponse, type TaskSummary } from '../../api'
 import AnnotationCanvas from './AnnotationCanvas'
 import { AnnotationInspector } from './AnnotationInspector'
 import { isPointInsidePolygon } from './annotationGeometry'
@@ -36,6 +36,12 @@ export default function AnnotationPage({ tasks, onNavigate, refreshDashboard }: 
   const [samPreviewMode, setSamPreviewMode] = useState<'polygon' | 'pixels'>('polygon')
   const [samSimplify, setSamSimplify] = useState(0.2)
   const warmedSamModels = useRef(new Set<string>())
+  const warmedDetectModels = useRef(new Set<string>())
+  const [labelModels, setLabelModels] = useState<LabelModelApiResponse[]>([])
+  const [detectOpen, setDetectOpen] = useState(false)
+  const [detectModel, setDetectModel] = useState<string>()
+  const [detectConfidence, setDetectConfidence] = useState(0.25)
+  const [detectIou, setDetectIou] = useState(0.7)
   const [busy, setBusy] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [exportName, setExportName] = useState('native-reviewed')
@@ -84,6 +90,14 @@ export default function AnnotationPage({ tasks, onNavigate, refreshDashboard }: 
   useEffect(() => {
     if (!taskId && tasks.length) setTaskId(tasks[0].id)
   }, [taskId, tasks])
+  useEffect(() => {
+    if (!taskId) { setLabelModels([]); return }
+    let active = true
+    void api.listLabelModels(taskId)
+      .then((models) => { if (active) setLabelModels(models) })
+      .catch(() => { if (active) setLabelModels([]) })
+    return () => { active = false }
+  }, [taskId])
   useEffect(() => { void load(page).catch((reason) => message.error(reason.message)) }, [taskId, status, page])
   useEffect(() => {
     dispatchInteraction({ type: 'image-change', classCount: current?.classes.length ?? 0, readonly: current?.status === 'reviewed' })
@@ -185,7 +199,73 @@ export default function AnnotationPage({ tasks, onNavigate, refreshDashboard }: 
 
   const setImageStatus = (nextStatus: AnnotationStatus) => {
     if (!current) return
+    if (nextStatus === 'reviewed' && current.shapes.length === 0) {
+      Modal.confirm({
+        title: '确认该图片没有任务目标？',
+        content: '审核后该图片会作为负样本保留，并在导出数据集时生成空标签。请确认画面中确实不存在需要标注的目标。',
+        okText: '确认无目标并审核',
+        cancelText: '继续检查',
+        onOk: () => mutate(() => api.setAnnotationStatus(current.frame_id, current.revision, nextStatus)),
+      })
+      return
+    }
     void mutate(() => api.setAnnotationStatus(current.frame_id, current.revision, nextStatus))
+  }
+
+  const draftCount = current?.shapes.filter((shape) => shape.status === 'draft').length ?? 0
+
+  const openDetect = () => {
+    if (!labelModels.length) return message.warning('当前任务没有可用的已发布模型，请先在模型页发布同类型模型')
+    setDetectModel(labelModels[0]?.model_source)
+    setDetectOpen(true)
+  }
+
+  const runModelDetect = async () => {
+    if (!current || !detectModel) return
+    const messageKey = 'model-prelabel'
+    try {
+      setBusy(true)
+      message.loading({ key: messageKey, content: warmedDetectModels.current.has(detectModel) ? '模型检测中…' : '模型检测中，首次加载模型可能需要 5–20 秒…', duration: 0 })
+      const result = await api.detectAnnotationObjects(current.frame_id, { revision: current.revision, model_source: detectModel, confidence: detectConfidence, iou: detectIou })
+      warmedDetectModels.current.add(detectModel)
+      setDetectOpen(false)
+      await load(page, current.frame_id, result.image)
+      if (result.created === 0) {
+        message.warning({
+          key: messageKey,
+          content: result.unmapped_classes.length
+            ? `模型输出的类别无法映射到任务类别：${result.unmapped_classes.join('、')}`
+            : '当前图片没有检测到目标，可调低置信度阈值重试',
+          duration: 6,
+        })
+      } else {
+        message.success({
+          key: messageKey,
+          content: `新增 ${result.created} 个模型草稿；逐个检查后采纳，或点击“采纳全部草稿”`,
+          duration: 5,
+        })
+      }
+    } catch (reason) {
+      message.error({ key: messageKey, content: reason instanceof Error ? reason.message : '模型检测失败', duration: 6 })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const setShapeStatus = (shapeId: string, nextStatus: 'confirmed' | 'rejected') => {
+    if (!current) return
+    void mutate(() => api.setAnnotationShapeStatus(current.frame_id, shapeId, current.revision, nextStatus))
+  }
+
+  const confirmAllDrafts = () => {
+    if (!current || !draftCount) return
+    Modal.confirm({
+      title: `采纳全部 ${draftCount} 个模型草稿？`,
+      content: '采纳后这些对象会成为正式标注，导出数据集时会被包含。建议先逐个检查明显误检。',
+      okText: '全部采纳',
+      cancelText: '继续检查',
+      onOk: () => mutate(() => api.confirmAllAnnotationDrafts(current.frame_id, current.revision)),
+    })
   }
 
   const clearSmartSelect = () => {
@@ -346,6 +426,7 @@ export default function AnnotationPage({ tasks, onNavigate, refreshDashboard }: 
         <Tooltip title="选择对象"><Button disabled={!current || busy} type={interaction.tool === 'select' ? 'primary' : 'default'} icon={<MousePointer2 size={16} />} onClick={() => changeTool('select')} /></Tooltip>
         <Tooltip title="新建矩形"><Button disabled={!current || busy || current.status === 'reviewed' || current.task_type === 'segment'} type={interaction.tool === 'box' ? 'primary' : 'default'} icon={<Box size={16} />} onClick={() => changeTool('box')} /></Tooltip>
         <Tooltip title="新建多边形"><Button disabled={!current || busy || current.status === 'reviewed' || current.task_type === 'detect'} type={interaction.tool === 'polygon' ? 'primary' : 'default'} icon={<Pentagon size={16} />} onClick={() => changeTool('polygon')} /></Tooltip>
+        <Tooltip title={labelModels.length ? '用已发布模型检测当前图片（生成待确认草稿）' : '没有可用于该任务的已发布模型'}><Button disabled={!current || busy || current.status === 'reviewed' || !labelModels.length} icon={<ScanSearch size={16} />} onClick={openDetect}>模型检测</Button></Tooltip>
         <Tooltip title="SAM2 智能分割"><Button disabled={!current || busy || current.status === 'reviewed' || current.task_type !== 'segment'} type={interaction.tool === 'sam' ? 'primary' : 'default'} icon={<Sparkles size={16} />} onClick={() => changeTool('sam')} /></Tooltip>
       </Space>
     </div>
@@ -380,6 +461,9 @@ export default function AnnotationPage({ tasks, onNavigate, refreshDashboard }: 
           onCancelClassEdit={() => dispatchInteraction({ type: 'cancel-class-edit' })}
           onDeleteObject={deleteSelected}
           onStatusChange={setImageStatus}
+          onSetShapeStatus={setShapeStatus}
+          onConfirmAllDrafts={confirmAllDrafts}
+          draftCount={draftCount}
           createControls={current.task_type === 'segment' && interaction.tool === 'sam' ? <div className="smart-select-panel">
             <div className="smart-select-title"><strong>Smart Select</strong><Button type="text" size="small" onClick={clearSmartSelect}>×</Button></div>
             <label>模型</label><Select value={samModel} onChange={(value) => { setSamModel(value); clearSmartSelect() }} options={[{ value: 'sam2_t.pt', label: 'SAM2 Tiny' }, { value: 'sam2_s.pt', label: 'SAM2 Small' }]} />
@@ -392,6 +476,40 @@ export default function AnnotationPage({ tasks, onNavigate, refreshDashboard }: 
         /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无图片" />}
       </aside>
     </div>
+    <Modal
+      title="模型辅助检测"
+      open={detectOpen}
+      okText="开始检测"
+      cancelText="取消"
+      confirmLoading={busy}
+      okButtonProps={{ disabled: !detectModel }}
+      onOk={() => void runModelDetect()}
+      onCancel={() => setDetectOpen(false)}
+    >
+      <Space direction="vertical" style={{ width: '100%' }}>
+        <Alert type="info" showIcon message={`任务类别：${current?.classes.join('、') || '未加载'}`} description="检测结果会生成为“待确认”草稿，不会直接进入导出数据集；确认或修改后才会生效。" />
+        <label>检测模型</label>
+        <Select
+          value={detectModel}
+          onChange={setDetectModel}
+          options={labelModels.map((model) => ({
+            value: model.model_source,
+            label: `${model.name} · 可映射 ${model.mapped_classes}/${model.classes.length} 类`,
+          }))}
+        />
+        {(() => {
+          const model = labelModels.find((item) => item.model_source === detectModel)
+          return model && model.unmapped_classes.length
+            ? <Alert type="warning" showIcon message={`以下模型类别无法映射到任务类别，对应目标会被忽略：${model.unmapped_classes.join('、')}`} />
+            : null
+        })()}
+        <label>置信度阈值：{detectConfidence.toFixed(2)}</label>
+        <Slider min={0.05} max={0.95} step={0.05} value={detectConfidence} onChange={setDetectConfidence} />
+        <label>IoU 阈值：{detectIou.toFixed(2)}</label>
+        <Slider min={0.3} max={0.9} step={0.05} value={detectIou} onChange={setDetectIou} />
+        {draftCount > 0 && <Alert type="warning" showIcon message={`当前图片已有 ${draftCount} 个未确认草稿`} description="新检测结果会追加到现有草稿之上，重复目标可在检查时拒绝。" />}
+      </Space>
+    </Modal>
     <Modal title="导出并发布 YOLO 数据集" open={exportOpen} confirmLoading={busy} okButtonProps={{ disabled: !resolveAnnotationTaskId(taskId, current?.task_id) || !exportName.trim() || !datasetDisplayName.trim() || !/^\d+\.\d+\.\d+$/.test(datasetVersion) || Boolean(validateSplitRatios(splitRatios)) }} onCancel={() => setExportOpen(false)} onOk={() => void exportReviewed()} okText="导出并发布">
       <Space direction="vertical" style={{ width: '100%' }}>
         <Alert type="info" showIcon message={`导出任务：${resolveAnnotationTaskId(taskId, current?.task_id) ?? '未选择'}`} />

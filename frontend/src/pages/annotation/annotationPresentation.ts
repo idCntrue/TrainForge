@@ -43,16 +43,25 @@ export function findCreatedShapeId(beforeIds: string[], afterIds: string[]): str
   return afterIds.find((id) => !previous.has(id))
 }
 
-export function shapeVisualStyle(color: string, selected: boolean) {
+export function shapeVisualStyle(color: string, selected: boolean, draft = false) {
   const red = Number.parseInt(color.slice(1, 3), 16)
   const green = Number.parseInt(color.slice(3, 5), 16)
   const blue = Number.parseInt(color.slice(5, 7), 16)
+  const fillAlpha = selected ? 0.2 : draft ? 0.06 : 0.12
   return {
     classStroke: color,
-    fill: `rgba(${red},${green},${blue},${selected ? 0.2 : 0.12})`,
-    strokeWidth: selected ? 3 : 2,
+    fill: `rgba(${red},${green},${blue},${selected ? fillAlpha : fillAlpha})`,
+    strokeWidth: selected ? 3 : draft ? 1.5 : 2,
     selectionStroke: selected ? '#34d399' : undefined,
+    dash: draft ? [6, 4] : undefined,
   }
+}
+
+export function shapeLabelText(object: AnnotationObjectPresentation): string {
+  const base = `#${object.number} ${object.label}`
+  if (object.shape.status !== 'draft') return base
+  const confidence = typeof object.shape.confidence === 'number' ? ` · ${Math.round(object.shape.confidence * 100)}%` : ''
+  return `${base}${confidence} · 待确认`
 }
 
 const toolLabels: Record<Exclude<AnnotationTool, 'select'>, string> = {

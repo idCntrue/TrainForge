@@ -62,6 +62,13 @@ from yolo_factory.api.schemas import (
     AnnotationSyncRequest,
     AnnotationShapeMutationRequest,
     AnnotationStatusRequest,
+    AnnotationDetectRequest,
+    AnnotationDetectResponse,
+    AnnotationShapeStatusRequest,
+    AnnotationConfirmAllRequest,
+    PrelabelStartRequest,
+    PrelabelRunResponse,
+    LabelModelResponse,
     AnnotationImageResponse,
     AnnotationImagePageResponse,
     AnnotationSyncResponse,
@@ -118,6 +125,10 @@ from yolo_factory.annotations.exporter import export_reviewed_annotations
 from yolo_factory.annotations.geometry import GeometryError
 from yolo_factory.annotations.repository import AnnotationConflict, AnnotationRepository, AnnotationSourceUnavailable, InvalidAnnotationTransition
 from yolo_factory.annotations.sam_executor import LocalSamExecutor, SamExecutionError
+from yolo_factory.labeling.detector import DetectorExecutionError, LocalDetectorExecutor
+from yolo_factory.labeling.mapping import build_class_mapping
+from yolo_factory.labeling.prelabel import PrelabelError, PrelabelService
+from yolo_factory.labeling.repository import PrelabelRunRepository, adoption_stats
 
 project_root = Path(__file__).resolve().parents[3]
 
@@ -378,7 +389,7 @@ def _annotation_response(image) -> AnnotationImageResponse:
         frame_id=image.frame_id, task_id=image.task_id, task_type=image.task_type,
         image_path=image.image_path, width=image.width, height=image.height,
         status=image.status, revision=image.revision, classes=list(image.classes),
-        shapes=[{"id": shape.id, "class_id": shape.class_id, "class_name": shape.class_name, "shape_type": shape.shape_type, "coordinates": list(shape.coordinates), "source": shape.source, "created_at": shape.created_at, "updated_at": shape.updated_at} for shape in image.shapes],
+        shapes=[{"id": shape.id, "class_id": shape.class_id, "class_name": shape.class_name, "shape_type": shape.shape_type, "coordinates": list(shape.coordinates), "source": shape.source, "status": shape.status, "confidence": shape.confidence, "model_source": shape.model_source, "created_at": shape.created_at, "updated_at": shape.updated_at} for shape in image.shapes],
         created_at=image.created_at, updated_at=image.updated_at,
     )
 
@@ -392,6 +403,8 @@ def create_app(
     model_gate_executor=None,
     inference_executor=None,
     sam_executor=None,
+    detector_executor=None,
+    prelabel_runner_factory=None,
     training_resource_policy: TrainingResourcePolicy | None = None,
     training_disk_usage=shutil.disk_usage,
     training_storage_cleanup=cleanup_training_storage,
@@ -469,6 +482,21 @@ def create_app(
     app.state.annotation_repository = annotation_repository
     local_sam_executor = sam_executor or LocalSamExecutor(root)
     app.state.sam_executor = local_sam_executor
+    local_detector_executor = detector_executor or LocalDetectorExecutor()
+    app.state.detector_executor = local_detector_executor
+    prelabel_run_repository = PrelabelRunRepository(registry)
+    prelabel_service = PrelabelService(
+        registry=registry,
+        storage_root=root,
+        job_tracker=job_tracker,
+        annotation_repository=annotation_repository,
+        model_repository=model_repository,
+        imported_model_repository=imported_model_repository,
+        run_repository=prelabel_run_repository,
+        runner_factory=prelabel_runner_factory,
+    )
+    app.state.prelabel_service = prelabel_service
+    app.state.prelabel_run_repository = prelabel_run_repository
 
     async def save_uploaded_file(upload: UploadFile, destination: Path) -> int:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -2030,6 +2058,116 @@ def create_app(
             raise HTTPException(status_code=500, detail=str(exc)) from exc
         except (GeometryError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/annotation-images/{frame_id}/detect", response_model=AnnotationDetectResponse)
+    @heavy_operation("detect")
+    def suggest_annotation_with_model(frame_id: str, req: AnnotationDetectRequest) -> AnnotationDetectResponse:
+        try:
+            image = annotation_repository.get_required(frame_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="annotation image not found") from exc
+        if image.status == "reviewed":
+            raise HTTPException(status_code=409, detail="reviewed images are read-only")
+        if prelabel_service.has_active_run():
+            raise HTTPException(status_code=409, detail="批量预标注运行中，暂不能单张检测")
+        try:
+            model = prelabel_service.resolve_model(req.model_source)
+        except PrelabelError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if model.task_type != image.task_type:
+            raise HTTPException(status_code=409, detail=f"模型类型 {model.task_type} 与任务类型 {image.task_type} 不一致")
+        already_loaded = local_detector_executor.loaded_model_path() == model.path
+        try:
+            result = local_detector_executor.detect(
+                image.image_path, model.path, image.task_type,
+                confidence=req.confidence, iou=req.iou,
+            )
+        except DetectorExecutionError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        mapping = build_class_mapping(result["names"], list(image.classes), model.aliases)
+        drafts = [item for detection in result["detections"] if (item := mapping.map_detection(detection)) is not None]
+        try:
+            created = annotation_repository.create_draft_shapes(
+                frame_id, drafts, model_source=model.source,
+                revision=req.revision, skip_if_confirmed=False,
+            )
+        except AnnotationConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return AnnotationDetectResponse(
+            image=_annotation_response(annotation_repository.get_required(frame_id)),
+            created=created,
+            unmapped_classes=list(mapping.unmapped),
+            model_was_loaded=not already_loaded,
+        )
+
+    @app.post("/api/annotation-images/{frame_id}/shapes/{shape_id}/status", response_model=AnnotationImageResponse)
+    def set_annotation_shape_status(frame_id: str, shape_id: str, req: AnnotationShapeStatusRequest) -> AnnotationImageResponse:
+        try:
+            return _annotation_response(annotation_repository.set_shape_status(frame_id, shape_id, revision=req.revision, status=req.status))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="annotation shape not found") from exc
+        except (AnnotationConflict, InvalidAnnotationTransition) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/annotation-images/{frame_id}/drafts/confirm", response_model=AnnotationImageResponse)
+    def confirm_annotation_drafts(frame_id: str, req: AnnotationConfirmAllRequest) -> AnnotationImageResponse:
+        try:
+            return _annotation_response(annotation_repository.confirm_all_drafts(frame_id, revision=req.revision))
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="annotation image not found") from exc
+        except (AnnotationConflict, InvalidAnnotationTransition) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/label-models", response_model=list[LabelModelResponse])
+    def list_label_models(task_id: str) -> list[LabelModelResponse]:
+        try:
+            return [LabelModelResponse(**item) for item in prelabel_service.list_label_models(task_id)]
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="task not found") from exc
+
+    @app.post("/api/frame-batches/{batch_id}/prelabel")
+    def start_batch_prelabel(batch_id: str, req: PrelabelStartRequest) -> dict:
+        try:
+            # The runner subprocess loads its own copy of the weights; release the
+            # interactive cache first so the API container stays inside its memory cap.
+            unload_detector = getattr(local_detector_executor, "unload", None)
+            if callable(unload_detector):
+                unload_detector()
+            return prelabel_service.start(
+                batch_id, model_source=req.model_source,
+                confidence=req.confidence, iou=req.iou, overwrite=req.overwrite,
+            )
+        except PrelabelError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/prelabel-runs", response_model=list[PrelabelRunResponse])
+    def list_prelabel_runs(task_id: str | None = None, limit: int = 20) -> list[PrelabelRunResponse]:
+        return [
+            PrelabelRunResponse(
+                id=run.id, job_id=run.job_id, batch_id=run.batch_id, task_id=run.task_id,
+                model_source=run.model_source, model_name=run.model_name,
+                confidence=run.confidence, iou=run.iou, status=run.status,
+                frames_total=run.frames_total, frames_processed=run.frames_processed,
+                frames_skipped=run.frames_skipped, shapes_created=run.shapes_created,
+                unmapped_classes=list(run.unmapped_classes), error=run.error,
+                started_at=run.started_at, finished_at=run.finished_at,
+            )
+            for run in prelabel_run_repository.list(task_id=task_id, limit=max(1, min(limit, 100)))
+        ]
+
+    @app.post("/api/prelabel-runs/{run_id}/cancel", status_code=204)
+    def cancel_prelabel_run(run_id: str) -> Response:
+        try:
+            prelabel_service.cancel(run_id)
+        except PrelabelError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return Response(status_code=204)
+
+    @app.get("/api/prelabel-stats")
+    def prelabel_statistics(model_source: str | None = None, task_id: str | None = None) -> dict:
+        return adoption_stats(registry, model_source=model_source, task_id=task_id)
 
     @app.get("/api/frame-batches")
     def list_all_batches() -> list[dict]:

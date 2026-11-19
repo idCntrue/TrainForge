@@ -1,5 +1,5 @@
 import { Alert, Button, Empty, Select, Tag } from 'antd'
-import { Check, LockKeyhole, Pencil, RotateCcw, ScanLine, Trash2, X } from 'lucide-react'
+import { Check, CheckCheck, LockKeyhole, Pencil, RotateCcw, ScanLine, Trash2, X } from 'lucide-react'
 
 import type { AnnotationImageApiResponse, AnnotationStatus } from '../../api'
 import { formatClassLabel } from './classLabels'
@@ -20,6 +20,9 @@ export interface AnnotationInspectorProps {
   onCancelClassEdit: () => void
   onDeleteObject: () => void
   onStatusChange: (status: AnnotationStatus) => void
+  onSetShapeStatus: (shapeId: string, status: 'confirmed' | 'rejected') => void
+  onConfirmAllDrafts: () => void
+  draftCount: number
   createControls?: React.ReactNode
 }
 
@@ -57,7 +60,8 @@ export function AnnotationInspector(props: AnnotationInspectorProps) {
       : interaction.tool !== 'select' ? <CreateContext {...props} classOptions={classOptions} />
         : selected && interaction.classDraft !== undefined ? <EditClassContext {...props} selected={selected} classOptions={classOptions} />
           : selected ? <SelectedContext {...props} selected={selected} />
-            : <IdleContext />}
+            : objects.length === 0 ? <EmptyReviewContext />
+              : <IdleContext />}
 
     <div className="annotation-section-title">标注对象</div>
     {objects.length ? <div className="annotation-shape-list">
@@ -69,24 +73,39 @@ export function AnnotationInspector(props: AnnotationInspectorProps) {
         disabled={busy}
       >
         <span className="annotation-object-number" style={{ backgroundColor: object.color }}>#{object.number}</span>
-        <span>{object.label}</span>
+        <span>{object.label}{object.shape.status === 'draft' && <Tag className="annotation-draft-tag" color="gold">待确认</Tag>}</span>
         <small>{shapeTypeLabel(object.shape.shape_type)} · {sourceLabel(object.shape.source)}</small>
       </button>)}
     </div> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前图片还没有标注对象" />}
 
     <div className="annotation-status-actions">
+      {props.draftCount > 0 && image.status !== 'reviewed' && <Button
+        icon={<CheckCheck size={15} />}
+        disabled={busy}
+        onClick={props.onConfirmAllDrafts}
+      >采纳全部草稿 ({props.draftCount})</Button>}
       {image.status !== 'reviewed' ? <Button
         type="primary"
         icon={<Check size={15} />}
-        disabled={objects.length === 0 || busy}
+        disabled={busy}
         onClick={() => props.onStatusChange('reviewed')}
-      >审核通过</Button> : <Button
+      >{objects.length === 0 ? '确认无目标并审核' : '审核通过'}</Button> : <Button
         icon={<RotateCcw size={15} />}
         disabled={busy}
         onClick={() => props.onStatusChange('annotated')}
       >退回修改</Button>}
     </div>
   </>
+}
+
+function EmptyReviewContext() {
+  return <Alert
+    className="annotation-empty-review-banner"
+    type="info"
+    showIcon
+    message="当前图片没有标注对象"
+    description="如果确认图片中不存在任务目标，可以将它作为负样本审核通过；负样本会保留图片，但导出时生成空标签。"
+  />
 }
 
 function IdleContext() {
@@ -122,11 +141,17 @@ function SelectedContext(props: AnnotationInspectorProps & { selected: Annotatio
     <dl>
       <div><dt>形状</dt><dd>{shapeTypeLabel(selected.shape.shape_type)}</dd></div>
       <div><dt>来源</dt><dd>{sourceLabel(selected.shape.source)}</dd></div>
+      {selected.shape.confidence != null && <div><dt>模型置信度</dt><dd>{Math.round(selected.shape.confidence * 100)}%</dd></div>}
+      <div><dt>状态</dt><dd>{selected.shape.status === 'draft' ? '模型草稿 · 待确认' : '已确认'}</dd></div>
     </dl>
-    <div className="annotation-selected-actions">
+    {selected.shape.status === 'draft' ? <div className="annotation-selected-actions">
+      <Button type="primary" icon={<Check size={14} />} onClick={() => props.onSetShapeStatus(selected.shape.id, 'confirmed')} disabled={props.busy}>采纳此对象</Button>
+      <Button icon={<Pencil size={14} />} onClick={() => props.onBeginClassEdit(selected.shape.class_id)} disabled={props.busy}>修改类别</Button>
+      <Button danger icon={<Trash2 size={14} />} onClick={() => props.onSetShapeStatus(selected.shape.id, 'rejected')} disabled={props.busy}>拒绝</Button>
+    </div> : <div className="annotation-selected-actions">
       <Button icon={<Pencil size={14} />} onClick={() => props.onBeginClassEdit(selected.shape.class_id)} disabled={props.busy}>修改类别</Button>
       <Button danger icon={<Trash2 size={14} />} onClick={props.onDeleteObject} disabled={props.busy}>删除对象</Button>
-    </div>
+    </div>}
   </section>
 }
 
@@ -165,6 +190,8 @@ function shapeTypeLabel(shapeType: 'box' | 'polygon') {
   return shapeType === 'box' ? '矩形' : '多边形'
 }
 
-function sourceLabel(source: 'manual' | 'sam2') {
-  return source === 'sam2' ? 'SAM2' : '手动'
+function sourceLabel(source: 'manual' | 'sam2' | 'model') {
+  if (source === 'sam2') return 'SAM2'
+  if (source === 'model') return '模型预标注'
+  return '手动'
 }

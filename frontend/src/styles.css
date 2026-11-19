@@ -599,3 +599,7 @@ button, input { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }
+
+.annotation-shape-list .annotation-draft-tag { margin-left: 6px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+.prelabel-stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; padding: 10px; border: 1px solid #e1e8e5; background: #f8fbfa; }
+.prelabel-stats div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }.prelabel-stats span { color: #74817d; font-size: 11px; }.prelabel-stats strong { color: #24332f; font-size: 18px; }

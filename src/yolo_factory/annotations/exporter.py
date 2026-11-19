@@ -46,6 +46,9 @@ def export_reviewed_annotations(task_id: str, export_name: str, storage_root: Pa
         shutil.copy2(source, images / source.name)
         rows = []
         for shape in item.shapes:
+            if shape.status != "confirmed":
+                # Rejected and still-draft proposals never reach a dataset.
+                continue
             expected = "box" if item.task_type == "detect" else "polygon"
             if shape.shape_type != expected:
                 raise ValueError(f"shape type mismatch for {item.frame_id}")

@@ -11,8 +11,8 @@ const image: AnnotationImageApiResponse = {
   width: 1280, height: 720, status: 'annotated', revision: 3,
   classes: ['entry-light', 'safety-sign'],
   shapes: [
-    { id: 'shape-1', class_id: 0, class_name: 'entry-light', shape_type: 'polygon', coordinates: [0, 0, 1, 0, 1, 1], source: 'manual', created_at: '', updated_at: '' },
-    { id: 'shape-2', class_id: 1, class_name: 'safety-sign', shape_type: 'polygon', coordinates: [0, 0, 1, 0, 1, 1], source: 'sam2', created_at: '', updated_at: '' },
+    { id: 'shape-1', class_id: 0, class_name: 'entry-light', shape_type: 'polygon', coordinates: [0, 0, 1, 0, 1, 1], source: 'manual', status: 'confirmed', created_at: '', updated_at: '' },
+    { id: 'shape-2', class_id: 1, class_name: 'safety-sign', shape_type: 'polygon', coordinates: [0, 0, 1, 0, 1, 1], source: 'sam2', status: 'confirmed', created_at: '', updated_at: '' },
   ],
   created_at: '', updated_at: '',
 }
@@ -35,6 +35,9 @@ function render(overrides: Partial<AnnotationInspectorProps> = {}) {
     onCancelClassEdit: vi.fn(),
     onDeleteObject: vi.fn(),
     onStatusChange: vi.fn(),
+    onSetShapeStatus: vi.fn(),
+    onConfirmAllDrafts: vi.fn(),
+    draftCount: 0,
     ...overrides,
   }
   return renderToStaticMarkup(<AnnotationInspector {...props} />)
@@ -73,6 +76,21 @@ describe('AnnotationInspector', () => {
     const html = render()
     expect(html).toContain('请选择一个标注对象')
     expect(html).not.toContain('新建对象类别')
+  })
+
+  it('allows an empty image to be explicitly reviewed as a negative sample', () => {
+    const emptyImage = { ...image, status: 'pending' as const, shapes: [] }
+    const html = render({
+      image: emptyImage,
+      objects: [],
+      interaction: createAnnotationInteraction(emptyImage.classes.length),
+    })
+
+    expect(html).toContain('当前图片没有标注对象')
+    expect(html).toContain('负样本')
+    expect(html).toContain('确认无目标并审核')
+    expect(html).not.toContain('请选择一个标注对象')
+    expect(html).not.toMatch(/<button[^>]*disabled[^>]*>[^<]*确认无目标并审核/)
   })
 
   it('keeps the image summary above tall create-tool controls', () => {

@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
   Descriptions,
   Divider,
@@ -20,6 +21,7 @@ import {
   Row,
   Select,
   Skeleton,
+  Slider,
   Space,
   Spin,
   Table,
@@ -82,6 +84,8 @@ import {
   type FrameAssetSummary,
   type HealthStatus,
   type JobStatus,
+  type LabelModelApiResponse,
+  type PrelabelStatsApiResponse,
   type TaskSummary,
   type VideoCollectionSummary,
   type DuplicateGroupSummary,
@@ -109,6 +113,15 @@ type NavigationGuardRegistration = {
   pendingCount: number
   save: () => Promise<void>
   discard: () => void
+}
+
+function resolveReviewTaskId(
+  batchId: string | null,
+  batches: Array<{ id: string; collection_id: string }>,
+  collections: Array<{ id: string; task_id: string }>,
+): string | undefined {
+  const batch = batches.find((item) => item.id === batchId)
+  return collections.find((item) => item.id === batch?.collection_id)?.task_id
 }
 
 function App() {
@@ -833,6 +846,15 @@ function ReviewWorkspace(props: {
 
   // Selections change buffer: filename -> targetStatus
   const [pendingSelections, setPendingSelections] = useState<Record<string, string>>({})
+  const [prelabelOpen, setPrelabelOpen] = useState(false)
+  const [prelabelLoading, setPrelabelLoading] = useState(false)
+  const [prelabelModels, setPrelabelModels] = useState<LabelModelApiResponse[]>([])
+  const [prelabelModel, setPrelabelModel] = useState<string>()
+  const [prelabelTaskId, setPrelabelTaskId] = useState<string>()
+  const [prelabelConfidence, setPrelabelConfidence] = useState(0.25)
+  const [prelabelIou, setPrelabelIou] = useState(0.7)
+  const [prelabelOverwrite, setPrelabelOverwrite] = useState(false)
+  const [prelabelStats, setPrelabelStats] = useState<PrelabelStatsApiResponse>()
   const [selectedFrameNames, setSelectedFrameNames] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<ReviewStatusFilter>(initialUrlState.status)
   const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null)
@@ -1002,6 +1024,61 @@ function ReviewWorkspace(props: {
         message.success(`已在本地标记 ${duplicateNames.length} 张重复图片`)
       },
     })
+  }
+
+  const loadPrelabelStats = async (modelSource: string, taskId: string) => {
+    try {
+      setPrelabelStats(await api.getPrelabelStats(modelSource, taskId))
+    } catch {
+      setPrelabelStats(undefined)
+    }
+  }
+
+  const openPrelabel = async () => {
+    if (!selectedBatchId) return
+    const taskId = resolveReviewTaskId(selectedBatchId, batches, props.collections)
+    if (!taskId) return message.error('无法确认当前批次的业务任务，请刷新批次列表后重试。')
+    setPrelabelTaskId(taskId)
+    setPrelabelOpen(true)
+    setPrelabelLoading(true)
+    setPrelabelStats(undefined)
+    try {
+      const models = await api.listLabelModels(taskId)
+      setPrelabelModels(models)
+      if (!models.length) {
+        setPrelabelModel(undefined)
+        message.warning('该任务还没有可用的已发布模型，请先在模型页发布同类型模型。')
+        return
+      }
+      const first = models[0].model_source
+      setPrelabelModel(first)
+      void loadPrelabelStats(first, taskId)
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '读取可用模型失败')
+    } finally {
+      setPrelabelLoading(false)
+    }
+  }
+
+  const startPrelabel = async () => {
+    if (!selectedBatchId || !prelabelModel || !prelabelTaskId) return
+    setPrelabelLoading(true)
+    try {
+      await api.syncAnnotationImages(prelabelTaskId)
+      const result = await api.startBatchPrelabel(selectedBatchId, {
+        model_source: prelabelModel,
+        confidence: prelabelConfidence,
+        iou: prelabelIou,
+        overwrite: prelabelOverwrite,
+      })
+      setPrelabelOpen(false)
+      props.onJobStarted(result.job_id)
+      message.success(`已开始预标注 ${result.frames_total} 张图片${result.frames_skipped ? `，跳过 ${result.frames_skipped} 张已有标注` : ''}`)
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '启动预标注失败')
+    } finally {
+      setPrelabelLoading(false)
+    }
   }
 
   const saveSelections = async () => {
@@ -1254,6 +1331,7 @@ function ReviewWorkspace(props: {
               <Button icon={<Video size={15} />} onClick={() => { setAppendVideoFiles([]); setAppendVideoProgress(0); setAppendVideoVisible(true) }}>追加视频抽帧</Button>
               <Button icon={<FolderArchive size={15} />} onClick={() => { setRecycleOpen(true); void loadRecycle(1) }}>回收站（{recycleSummary.item_count}）</Button>
               <Button icon={<PencilRuler size={15} />} disabled={stats.selected === 0} onClick={() => props.onNavigate('annotation')}>进入原生标注</Button>
+              <Button icon={<ScanSearch size={15} />} loading={prelabelLoading} disabled={submitting || appendUploading || appendVideoUploading} onClick={() => void openPrelabel()}>模型预标注</Button>
               <Button
                 type="primary"
                 onClick={() => void saveSelections().catch(() => undefined)}
@@ -1482,6 +1560,60 @@ function ReviewWorkspace(props: {
         </Card>
       )}
 
+      <Modal
+        title="模型批量预标注"
+        open={prelabelOpen}
+        okText="开始预标注"
+        cancelText="取消"
+        confirmLoading={prelabelLoading}
+        okButtonProps={{ disabled: !prelabelModel }}
+        onOk={() => void startPrelabel()}
+        onCancel={() => setPrelabelOpen(false)}
+        width={620}
+      >
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            message={`当前批次：${selectedBatchId ?? '-'} · 业务任务：${prelabelTaskId ?? '-'}`}
+            description="模型会为批次中已保留、尚未标注的图片生成“待确认”草稿；草稿不进入导出数据集，需要在标注页确认或修改后才生效。已审核和已有标注的图片默认跳过。"
+          />
+          <label>检测模型</label>
+          <Select
+            value={prelabelModel}
+            loading={prelabelLoading}
+            placeholder="没有可用模型"
+            onChange={(value) => {
+              setPrelabelModel(value)
+              if (prelabelTaskId) void loadPrelabelStats(value, prelabelTaskId)
+            }}
+            options={prelabelModels.map((model) => ({
+              value: model.model_source,
+              label: `${model.name} · 可映射 ${model.mapped_classes}/${model.classes.length} 类`,
+            }))}
+          />
+          {(() => {
+            const model = prelabelModels.find((item) => item.model_source === prelabelModel)
+            return model && model.unmapped_classes.length
+              ? <Alert type="warning" showIcon message={`以下模型类别无法映射到任务类别，对应目标会被忽略：${model.unmapped_classes.join('、')}`} />
+              : null
+          })()}
+          <label>置信度阈值：{prelabelConfidence.toFixed(2)}</label>
+          <Slider min={0.05} max={0.95} step={0.05} value={prelabelConfidence} onChange={setPrelabelConfidence} />
+          <label>IoU 阈值：{prelabelIou.toFixed(2)}</label>
+          <Slider min={0.3} max={0.9} step={0.05} value={prelabelIou} onChange={setPrelabelIou} />
+          <Checkbox checked={prelabelOverwrite} onChange={(event) => setPrelabelOverwrite(event.target.checked)}>
+            覆盖已有草稿（不会覆盖已确认标注和已审核图片）
+          </Checkbox>
+          {prelabelStats && <div className="prelabel-stats">
+            <div><span>历史草稿</span><strong>{prelabelStats.totals.created}</strong></div>
+            <div><span>待确认</span><strong>{prelabelStats.totals.draft}</strong></div>
+            <div><span>已采纳</span><strong>{prelabelStats.totals.confirmed}</strong></div>
+            <div><span>已拒绝</span><strong>{prelabelStats.totals.rejected}</strong></div>
+            <div><span>采纳率</span><strong>{prelabelStats.adoption_rate == null ? '暂无' : `${Math.round(prelabelStats.adoption_rate * 100)}%`}</strong></div>
+          </div>}
+        </Space>
+      </Modal>
       <Modal title={`向批次 ${selectedBatchId ?? ''} 追加图片`} open={appendVisible} confirmLoading={appendUploading} okText="上传并追加" okButtonProps={{ disabled: appendFiles.length === 0 }} onOk={() => void appendImages()} onCancel={() => { if (!appendUploading) { setAppendVisible(false); setAppendFiles([]) } }} maskClosable={!appendUploading}>
         <AntUpload.Dragger multiple accept=".jpg,.jpeg,.png,.bmp,.webp" beforeUpload={() => false} fileList={appendFiles.map((file, index) => ({ uid: `${index}-${file.name}`, name: file.name, status: 'done', originFileObj: file } as any))} onChange={({ fileList }) => { const files = fileList.map((item) => item.originFileObj).filter(Boolean) as File[]; const error = uploadLimitError(files, 'image'); if (error) message.error(error); else setAppendFiles(files) }} onRemove={(file) => { setAppendFiles((items) => items.filter((item) => item.name !== file.name)); return true }} disabled={appendUploading}>
           <p className="ant-upload-drag-icon"><Images size={38} /></p><p>拖入图片或点击选择</p><p className="ant-upload-hint">{IMAGE_UPLOAD_GUIDANCE}；重复内容会自动跳过</p>
